@@ -1,0 +1,31 @@
+{
+  "name": "sungmin",
+  "version": "0.2.0",
+  "description": "sungmin 작업 지침: 공통 원칙, 문서 작성, 컴파일러 빌드·검증, Jira 읽기 전용 조회, subagent 사용, Codex-Claude 토론, A0 모델 브링업(입구·run 실행·감시·skills 변경 관문), aviron-transformers 작업.",
+  "author": {
+    "name": "sungmin"
+  },
+  "keywords": [
+    "guidelines",
+    "documentation",
+    "compiler",
+    "jira",
+    "subagent"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sungmin Work Skills",
+    "shortDescription": "sungmin 개인 작업 지침",
+    "longDescription": "모든 작업의 공통 원칙과 문서 작성 규칙, 컴파일러 빌드·검증, Jira 읽기 전용 조회, subagent 위임, Codex-Claude 토론, aviron-skills 변경 관문을 skill로 제공한다.",
+    "developerName": "sungmin",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Work guidelines",
+      "Documentation rules",
+      "Change gate"
+    ],
+    "defaultPrompt": [
+      "sungmin 작업 원칙에 따라 이 작업을 진행해줘."
+    ]
+  }
+}

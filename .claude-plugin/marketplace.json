@@ -1,0 +1,14 @@
+{
+  "name": "sungmin-plugin",
+  "owner": {
+    "name": "sungmin"
+  },
+  "description": "sungmin 개인 작업 지침 skills.",
+  "plugins": [
+    {
+      "name": "sungmin",
+      "source": "./plugins/sungmin",
+      "description": "sungmin 작업 지침: 공통 원칙, 문서 작성, 컴파일러 빌드·검증, Jira 읽기 전용 조회, subagent 사용, Codex-Claude 토론, A0 모델 브링업(입구·run 실행·감시·skills 변경 관문), aviron-transformers 작업."
+    }
+  ]
+}
