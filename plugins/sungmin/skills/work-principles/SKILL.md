@@ -1,6 +1,6 @@
 ---
 name: work-principles
-description: 모든 작업(코드 수정, 조사, 빌드·검증, 문서·기록, 원격 서버 작업, subagent 위임)을 시작할 때 먼저 적용하는 공통 원칙. 저장소 확인, 변경 범위, commit·push 규칙, host·원격 서버 작업 위치, 샌드박스 미사용, 문서 작성(언어·근거·ASCII diagram), subagent 위임, 검증·보고 방식을 정한다.
+description: 모든 작업(코드 수정, 조사, 빌드·검증, 문서·기록, 원격 서버 작업, subagent 위임)에 적용하는 공통 원칙. Claude Code에서는 플러그인 SessionStart hook이 세션 시작 때 본문을 자동으로 넣으므로 따로 부르지 않아도 된다(Codex 등 hook이 없는 곳에서는 작업 시작 때 이 skill을 읽는다). 저장소 확인, 변경 범위, commit·push 규칙, host·원격 서버 작업 위치, 샌드박스 미사용, 문서 작성(언어·근거·ASCII diagram), subagent 위임, 검증·보고 방식을 정한다.
 ---
 
 # 작업 공통 원칙

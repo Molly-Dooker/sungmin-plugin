@@ -1,7 +1,7 @@
 {
   "name": "sungmin",
   "displayName": "Sungmin Work Skills",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "sungmin 작업 지침: 공통 원칙(문서 작성·subagent 위임 포함), A0 모델 브링업(run 실행·감시·skills 변경 관문), aviron-transformers 작업.",
   "author": {
     "name": "sungmin"
