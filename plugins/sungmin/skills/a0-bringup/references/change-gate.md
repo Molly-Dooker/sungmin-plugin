@@ -1,8 +1,3 @@
----
-name: skills-change-gate
-description: aviron-skills 플러그인(bos-model-bringup)의 지침·checker·runtime·러너를 바꿀 때(검토사항·개선안·구현) 항목마다 필요성과 규모를 거르는 기준. 운영 문서만 고치는 일에는 적용하지 않는다.
----
-
 # skills 변경 관문
 
 aviron-skills 플러그인을 바꾸는 모든 작업에 적용한다. 검토사항을 만들 때, 개선안을 짤 때, 구현할 때 모두 해당한다. 운영 문서만 고치는 일에는 적용하지 않는다.
