@@ -1,14 +1,15 @@
 # run 실행: skills clone에서 직접 돌리기
 
-**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 플러그인 `aviron-model-bringup`을 clone 모드로 쓴다. 러너 `scripts/run_bringup`을 user systemd unit으로 띄우고, Stage 0 → 7을 연속 run(`--serving-after 5`)으로 끝까지 돈다. 명령은 모두 실행 서버에서 돌리고, 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 있다.
+**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 플러그인 `aviron-model-bringup`을 clone 모드로 쓴다. 러너 `scripts/run_bringup`을 user systemd unit으로 띄우고, Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다(skills 0.48.0 이후 stage 번호). 명령은 모두 실행 서버에서 돌리고, 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 있다.
 
 - **러너 동작의 원본:** 플러그인 `skills/model-bringup/references/operator.md`(시작, 재개, 러너가 스스로 하는 일, serving, 연속 run, 종료 기록). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 operator.md를 따르고 이 문서를 고친다.
 - 공통 운영 규칙(실행 clone 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md)에 있다.
 
 ```text
 prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch units
-        -> stage 0..5 -> candidate -> stage 6..7 -> serving-complete -> report, backup
-   on stop: STOP file -> drain -> (device stop? verify once with user ok) -> .ack -> resume
+        -> stage 0..6 -> candidate -> stage 7..8 -> serving-complete -> report, backup
+   on stop: STOP file -> drain -> (device stop? verify once with user ok) -> resume-with.sh verified-resume (runner writes .ack)
+   waiting interrupt (126 await_ack, 3 await_hold): resume-with.sh; other stops: resume.sh
 ```
 
 ## stage와 러너
@@ -18,22 +19,24 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 | 0 | reference-selection | 없음 | HF 분석과 참조 선택(exact·similar·blocks), host에서 돈다 |
 | 1 | functional-decoder | 씀 | |
 | 2 | optimized-decoder | 씀 | |
-| 3 | full-model | 씀 | HF 참조 `ensure`를 먼저 부른다 |
-| 4 | optimized-full-model | 씀 | serving entry(품질 없음) |
-| 5 | benchmark-candidates | 씀 | MMLU·TTFT/TPS 보고, serving entry(품질). 그 전에 참조 `ensure` |
-| 6 | vllm | 씀 | serving |
-| 7 | optimized-vllm | 씀 | serving |
+| 3 | full-model | 씀 | 통합, O0 anchor를 얼린다 |
+| 4 | full-model-candidates | 씀 | 후보·fidelity·handover. 그 전에 HF 참조 `ensure` |
+| 5 | optimized-full-model | 씀 | serving entry(품질 없음) |
+| 6 | benchmark-candidates | 씀 | MMLU·TTFT/TPS 보고, serving entry(품질). 그 전에 참조 `ensure` |
+| 7 | vllm | 씀 | serving |
+| 8 | optimized-vllm | 씀 | serving |
 
-- report run은 0~5이고, Stage 5 뒤 사용자 선택을 기다린다.
-- 연속 run은 `--serving-after 5`면 Stage 5 보고 뒤 러너가 후보를 골라 6 → 7을 이어 간다. `--serving-after 4`면 Stage 5를 건너뛰고, 품질이 `not-measured`다. `--serving-after`는 4·5만 받는다.
+- report run은 0~6이고, Stage 6 뒤 사용자 선택을 기다린다(`await_selection` 인터럽트).
+- 연속 run은 `--serving-after benchmark-candidates`면 Stage 6 보고 뒤 러너가 후보를 골라 7 → 8을 이어 간다. `--serving-after optimized-full-model`이면 Stage 6을 건너뛰고, 품질이 `not-measured`다. `--serving-after`는 이 두 이름만 받고 숫자는 거부한다(0.47의 `5`가 지금의 benchmark-candidates다).
 - 러너 프로세스는 LangGraph `graph_controller.py`이고, checkpoint는 `<run>/graph/checkpoint.sqlite`다. 상태의 원천은 `<run>/manifest.txt`다.
-- Stage 6·7(serving)은 greedy만 받는다(temperature 0의 `top_k`·`top_p`·`min_p`는 greedy로 받는다).
+- Stage 7·8(serving)은 greedy만 받는다(temperature 0의 `top_k`·`top_p`·`min_p`는 greedy로 받는다).
 - batch는 capacity 1 또는 4다(`--max-batch 1|4`). decode는 capacity 행으로 돌고 비활성 행은 −1이다. 규칙은 플러그인 `skills/model-bringup/references/batch_contract.md`에 있다.
 - 새 run은 플러그인 revision 하나만 쓴다. 이전 revision 산출물은 그 revision의 checker로 판정하고, 새 run이 읽거나 재개하지 않는다.
 
 ## 규칙
 
-- **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(0.46.x run → `v0.46.5`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.46.0 run → 0.46.1).
+- **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
+- **참조 설치:** `python_env_ttt`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.1은 `d92e67f`, 0.48.x는 `6054718`.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
 - **자동 checker 수정:** 끈다(`AVIRON_BRINGUP_AUTO_CHECKER_FIX=off`). checker 결함은 watcher가 run 밖에서 고친다.
@@ -50,7 +53,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 | `STACK` | 이번 run용으로 새로 만든 serving stack manifest(`bringup/serving/stack-<date>-<tag>.json`) |
 | `HF_MODEL`, `MODEL_DIR` | `MODEL_DIR=models/autoports/<model ID 소문자, 영숫자 밖은 _>` |
 
-작업 폴더는 run마다 `$WORK_ROOT/r0NN_<model>_<batch>_<date>/`로 만든다. 직전 run의 작업 폴더에서 script(`launch.env`, `precheck.sh`, `devcheck.sh`, `start.sh`, `resume.sh`, `launch-unit.sh`, `watch_run0NN.py`, `waitev.sh`)를 복사해 모델·경로·batch·tag만 바꾼다. 실제 예는 sungmin `aviron-skills/rounds/046/2_run/README.md`(046 run 1)이다.
+작업 폴더는 run마다 `$WORK_ROOT/r0NN_<model>_<batch>_<date>/`로 만든다. 직전 run의 작업 폴더에서 script(`launch.env`, `precheck.sh`, `devcheck.sh`, `start.sh`, `resume.sh`, `resume-with.sh`, `history.sh`, `launch-unit.sh`, `status.sh`, `diskguard.sh`, `watch_run0NN.py`, `waitev.sh`)를 복사해 모델·경로·batch·tag만 바꾼다. 실제 예는 myA0 `/home/bos/bt_work/r048_gemma4_e4b_w8a8_b4_0481_20261115/`(048 run 5, sungmin `aviron-skills/rounds/048/2_run/5_Gemma4_E4B_W8A8_b4_0481.md`)이다. 거기 `precheck.sh`·`devcheck.sh`의 `pgrep -af` 줄은 아래 "시작 전 확인"의 `ps … | grep` 줄로 바꾼다.
 
 `launch.env`(`<…>` 자리는 [../SKILL.md](../SKILL.md) "환경 값"):
 
@@ -73,13 +76,13 @@ offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run
 
 ## HF 참조(GT)
 
-- 위치는 `$CHECKOUT/bringup/references/<org>/<model>/<revision>/`이다. 만드는 방법은 `$SK/scripts/prepare_references.py` 하나다(`check`·`ensure`). 상세는 플러그인 `skills/full-model/references/reference_generation.md`에 있다.
+- 위치는 `$CHECKOUT/bringup/references/<org>/<model>/<revision>/`이다. 만드는 방법은 `$SK/scripts/prepare_references.py` 하나다(`check`·`ensure`). 상세는 플러그인 `skills/full-model-candidates/references/reference_generation.md`에 있다.
 - **참조는 run 전에 GPU host에서 만든다.** `AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY`를 빼고 checkout 루트에서 돌린다. run 안에서는 local only로 둔다. 그래야 run이 GPU host 상태에 묶이지 않는다.
   ```bash
   cd $CHECKOUT && env -u AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY PYTHON_BIN=$PY python3 $SK/scripts/prepare_references.py ensure --hf-model $HF_MODEL
   ```
 - 장소는 GPU host → 로컬 GPU → CPU 순서다. GPU host는 git 추적 밖의 `bringup/reference_hosts.local.md`에 ` ```json ` block(`{"hosts": [{"name", "ssh", "workdir", "python", "min_free_gb", "max_gpu_util"}]}`)으로 적는다. 원격 venv는 `$PY`의 패키지 버전으로 만들고(`python3.10`이 없으면 `python3`) 끝나면 지운다.
-- 러너는 launch마다 Stage 3·5 가운데 처음 도는 stage 앞에서 `ensure`를 부르고 끝날 때까지 기다린다(`<run>/references.log`). 준비되지 않으면 그 stage 전에 멈춘다(exit 8).
+- 러너는 launch마다 Stage 4·6 가운데 처음 도는 stage 앞에서 `ensure`를 부르고 끝날 때까지 기다린다(`<run>/references.log`). 준비되지 않으면 그 stage 전에 멈춘다(exit 8).
 - 세트는 `references.json`의 revision·protocol·dtype·파일 hash가 맞으면 다시 쓴다. 맞지 않으면 옛 폴더를 `<revision>.superseded-<시각>`으로 옮기고 새로 만든다.
 - `references environment: match|differs: …|unrecorded`는 기록만 하는 정보다. 패키지 버전 같은 생산 환경이 달라도 세트를 그대로 쓰고, 러너는 manifest에 `references_environment`(차이가 있으면 `references_environment_diff`)를 남긴다. 보고서에는 참조 생산 환경과 run 환경을 나란히 적는다.
 - HF cache에 `refs/main`이 없으면(revision을 지정해 받은 모델) run 전에 pin한 revision으로 쓴다. CPU 참조 경로가 `refs/main == revision`을 요구한다(046-14).
@@ -94,10 +97,12 @@ env | grep '^BOS_BRINGUP_'                                     # 없어야 한�
 git -C $REPO/aviron-skills status --porcelain -- plugins/aviron-model-bringup   # 비어 있어야 한다
 git -C $REPO/aviron-skills rev-parse HEAD origin/develop <tag>^{commit}      # 같아야 한다
 $PY -c 'import tt_transformers; print(tt_transformers.__file__)'   # python_env_ttt site-packages 아래여야 한다
+$PY $SK/scripts/reference_source.py                            # 오류 없이 실행 clone의 pin commit이 나와야 한다
 cd $CHECKOUT && git status --short | head -3 && git log --oneline -1
 $PY -I $SK/runtime/readiness_check/e2_checkout.py --tt-metal-home $CHECKOUT | grep -E '"skips"|"commit"'
+$PY -c 'import ttnn; ttnn.bos_quantize_fused'                  # W8A8: 오류 없어야 한다(0.49.x 참조가 부름, e2 f3348a2aac 이상)
 ls -d $CHECKOUT/$MODEL_DIR                                     # 없어야 한다
-pgrep -af "run_bringup|run_device_command|graph_controller"    # 없어야 한다
+ps -eo pid,etime,cmd | grep -E "[r]un_bringup|[r]un_device_command|[g]raph_controller|[v]llm serve|[E]ngineCore"   # 없어야 한다
 fuser -v /dev/bos/0; lsmod | grep '^bos '                      # holder 없음, 셋째 칸 0
 df -h $CHECKOUT
 $PY $SK/scripts/prepare_references.py check --python $PY --hf-model $HF_MODEL --model-dir $MODEL_DIR   # references ready
@@ -105,6 +110,9 @@ $PY $SK/scripts/serving_stack.py --manifest $STACK --installed
 CODEX_HOME=$CODEX_HOME $CODEX_BIN login status
 ```
 
+- **W8A8 e2 op:** skills 0.49.x 참조는 W8A8 activation을 `ttnn.bos_quantize_fused`로 양자화한다. 이 op이 없는 e2(`f3348a2aac` 앞, 예: `629307f1bc`)에서는 Stage 1에서 멈출 것이므로, 오류가 나면 run 전에 e2를 `develop` 최신으로 올려 Release로 다시 빌드한다. 러너는 이것을 보지 않는다(049 D3 사용자 결정, sungmin `aviron-skills/rounds/049/1_개선안.md`).
+- **프로세스 확인:** `pgrep -f`는 쓰지 않는다. `ssh <server> '…'`로 돌리면 패턴이 원격 셸의 명령줄에도 들어가 pgrep이 그 셸을 찾는다. `ps … | grep "[r]un_…"`는 셸과 grep의 명령줄에 적힌 `[r]un_…`가 패턴과 맞지 않아 겹치지 않는다. 같은 ssh 명령 안에 괄호 없는 이름(예: `run_bringup`)을 함께 적으면 ps 줄도 그 셸을 찾으니 따로 돌린다(049 myA0 확인).
+- **참조 pin:** `reference_source.py`가 "differs from the pinned source hash"로 실패하면 `python_env_ttt`에 다른 pin이 설치돼 있는 것이다. 위 "규칙"의 참조 설치를 따른다.
 - 참조 `check`는 `--python`의 환경과 비교한다. 빼면 다른 환경과 비교해 차이가 크게 나온다. revision·protocol·파일 hash가 다르거나 세트가 없으면 not ready이고, run 전에 만든다.
 - **장치 확인:** `devcheck.sh <작업 폴더>`로 wrapper 300 s 1회 `verify_device.py`를 돌려 pass·`mesh-close-confirmed`·holder 없음을 본다.
 - **autoport:** 이전 run의 autoport가 남아 있으면, 접거나 취소한 run이면 지운다. 결과가 있는 run이면 아래 "산출물 백업"대로 압축·대조한 뒤 지운다.
@@ -116,16 +124,17 @@ CODEX_HOME=$CODEX_HOME $CODEX_BIN login status
 ```bash
 ./start.sh --dry-run
 R=$(ls -td $CHECKOUT/bringup/artifacts/multigoal-runs/*/ | head -1)
-grep -E "^(plugin_mode|plugin_version|plugin_revision|reference_commit|reference_source_hash|batch_scope_operator|serving_after|stop_after_stage|device_stop_verifier|launch_note|tooling_status|serving_candidate_preview|stage_[0-7]_dry_run)" $R/manifest.txt
+grep -E "^(plugin_mode|plugin_version|plugin_revision|reference_commit|reference_source_hash|batch_scope_operator|serving_after|stop_after_stage|device_stop_verifier|launch_note|tooling_status|serving_candidate_preview|stage_[0-8]_dry_run)" $R/manifest.txt
 ```
 
 볼 값은 다음과 같다.
 
 - `plugin_mode=clone`, `plugin_version`·`plugin_revision`이 실행 clone(tag), `reference_commit`이 skills pin과 같고 `reference_source_hash`가 있다.
-- `serving_after=5`, `stop_after_stage=7`, `batch_scope_operator`가 지시한 batch, `device_stop_verifier=all`.
+- `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`가 지시한 batch, `device_stop_verifier=all`.
 - `launch_note` 줄이 없다.
 - `tooling_status`에서 device_profiler·perf_report가 available이다.
-- `stage_0_dry_run`~`stage_7_dry_run=true`.
+- `stage_0_dry_run`~`stage_8_dry_run=true`.
+- `serving_candidate_preview`는 새 run이면 Stage 5 기록이 없어 `unavailable:<경로>`다(정상).
 
 ## 시작
 
@@ -136,16 +145,27 @@ grep -E "^(plugin_mode|plugin_version|plugin_revision|reference_commit|reference
 source <work>/launch.env
 unset AVIRON_BRINGUP_SERVING_HANDOFF AVIRON_BRINGUP_SERVING_CANDIDATE AUTOPORT_PRECISION_CONFIG LAUNCH_NOTE
 export AVIRON_BRINGUP_SERVING_STACK_MANIFEST=$STACK
-cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after 5 --max-batch <1|4> "$@"
+cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after benchmark-candidates --max-batch <1|4> "$@"
 
-# resume.sh <run_dir> <stage> [note|-] [runner options]: same run, same thread
+# resume.sh <run_dir> <stage> [note|-] [runner options]: same run, same thread (stop without an interrupt; a run waiting in an interrupt takes resume-with.sh)
 source <work>/launch.env
 unset AVIRON_BRINGUP_SERVING_HANDOFF AVIRON_BRINGUP_SERVING_CANDIDATE AUTOPORT_PRECISION_CONFIG LAUNCH_NOTE
 export AVIRON_BRINGUP_SERVING_STACK_MANIFEST=$STACK
 export RUN_DIR=$1 RESUME_STAGE=$2
 if [ -n "${3:-}" ] && [ "$3" != "-" ]; then export LAUNCH_NOTE=$3; fi
 shift 3 2>/dev/null || shift $#
-cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after 5 --max-batch <1|4> "$@"
+cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after benchmark-candidates --max-batch <1|4> "$@"
+
+# resume-with.sh <run_dir> '<JSON>' [runner options]: answer the interrupt the run waits in (device stop await_ack, hold await_hold)
+source <work>/launch.env
+unset AVIRON_BRINGUP_SERVING_HANDOFF AVIRON_BRINGUP_SERVING_CANDIDATE AUTOPORT_PRECISION_CONFIG LAUNCH_NOTE RUN_DIR RESUME_STAGE
+export AVIRON_BRINGUP_SERVING_STACK_MANIFEST=$STACK
+run=$1 answer=$2; shift 2
+cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after benchmark-candidates --max-batch <1|4> --run-dir "$run" --resume-with "$answer" "$@"
+
+# history.sh <run_dir>: read-only checkpoints and the interrupt the run waits in (no other option, starts nothing)
+source <work>/launch.env
+cd $CHECKOUT && exec $SK/scripts/run_bringup --graph-history "$1"
 
 # launch-unit.sh <unit> <script> [args]: user systemd unit
 cd $CHECKOUT && mkdir -p bringup/runner-logs
@@ -162,17 +182,23 @@ systemd-run --user --unit="$1" -p KillMode=mixed -p TimeoutStopSec=1d -p OOMPoli
 - `TimeoutStopSec`는 가장 긴 wrapper 기한 + 75 s보다 커야 한다.
 - `OOMPolicy=continue`: OOM kill이 난 명령만 실패하고 unit은 남는다.
 - 시작 뒤 확인: `systemctl --user is-active <unit>`, manifest `plugin_version`·`reference_commit`·`graph_launch=fresh`·`stage_0_thread_id`.
+- 모든 launch script의 mode option(`--serving-after`, `--max-batch`, `--skip-stage`)은 manifest와 같아야 한다. report run이면 `--serving-after`를 뺀다.
 - **batch:** `--max-batch 1|4`. 4면 capacity 1·4, 1이면 capacity 1만이다. 재개는 기록값을 이어받는다.
 - **끝난 stage부터 새 세션:** `--skip-stage <N>`을 준다(operator.md "Start a run").
 
 ## 감시 unit
 
-run마다 두 개를 띄운다. 판단 규칙은 [watcher.md](watcher.md)다.
+run마다 세 개를 띄운다. 판단 규칙은 [watcher.md](watcher.md)다.
 
 - **run 감시:** 직전 작업 폴더의 `watch_run0NN.py`를 복사한다. manifest 주요 줄, 비정상 wrapper 기록, 리뷰 verdict, unit 상태, unit 뒤 holder, 디스크를 30 s마다 `events.log`에 적는다. `waitev.sh [분]`은 중요한 줄이 생기거나 unit이 끝날 때까지 기다린다.
   ```bash
   systemd-run --user --unit=watch-r0NN-<model> -p StandardOutput=append:<work>/watch.out -p StandardError=append:<work>/watch.out \
     $PY <work>/watch_run0NN.py --name <name> --run-dir <run> --unit-file <work>/unit.txt --events <work>/events.log --disk-path $CHECKOUT
+  ```
+- **디스크 보호:** 직전 작업 폴더의 `diskguard.sh`(048 run 5)를 복사한다. 디스크 여유가 하한(인자, 048 run 5는 6 GB) 밑이면 아래 "멈추기" 1·2·4를 한다: `wrappers/STOP`, drained·holder 없음·wrapper 없음 확인, unit 정지. 장치가 바쁘면 unit을 멈추지 않고 그렇게 적는다. 아무것도 지우지 않는다. 러너는 디스크를 보지 않는다(049 D2 사용자 결정). 감시 script도 여유 15 GB 밑이면 `disk low`를 낸다. 048 run 5는 autoport가 98 GB까지 컸고(대부분 Tracy 원본), 0.49.1부터 stage가 profile 원본을 쓴 뒤 지운다.
+  ```bash
+  systemd-run --user --unit=diskguard-r0NN-<model> -p StandardOutput=append:<work>/diskguard.out -p StandardError=append:<work>/diskguard.out \
+    bash <work>/diskguard.sh 6
   ```
 - **리셋권 감시:** 043 `codex_limit_watch.py`를 `$LIMITWATCH`로 복사한다. 띄우기 전에 `--read-now`로 사용량·reset 시각·남은 리셋권을 기록한다. 99% 이상, 한도 도달, usage-limit 대기 중 하나가 생기면 리셋권을 한 번 쓴다. 같은 계정 감시는 한 서버에만 둔다(041차, 서버 표). 리셋권이 0이면 99%에서 사용자에게 알린다.
   ```bash
@@ -198,13 +224,15 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 
 | 방식 | 언제 | 방법 |
 |---|---|---|
-| 같은 세션 | 실행 clone이 그대로일 때 | `resume.sh <run_dir> <stage> -`(새 메모 없이). `RESUME_STAGE`는 연속 run에서 0~7. manifest와 같은 `--skip-stage`·`--serving-after`·stack 내용 |
+| 같은 세션 | 실행 clone이 그대로일 때, 인터럽트 없는 정지 | `resume.sh <run_dir> <stage> -`(새 메모 없이). `RESUME_STAGE`는 연속 run에서 0~8. manifest와 같은 `--skip-stage`·`--serving-after`·stack 내용 |
+| 인터럽트 대기 | 장치 정지(exit 126, `await_ack`), hold(exit 3, `stop_reason=graph-reconcile:<node>`, `await_hold`), report run 끝(`await_selection`) | `resume-with.sh <run_dir> '<JSON>'`. 장치 정지는 `{"decision":"verified-resume","note":"<누구, 언제, verifier 통과 또는 재부팅>"}`, hold는 `{"decision":"resume"}`, report 끝은 `{"decision":"resume","stage":<N>}`. 그만두려면 `{"decision":"stop"}`. `resume.sh`(RUN_DIR+RESUME_STAGE)는 거부된다(exit 1, payload와 답 형식 출력) |
 | 새 세션 | plugin을 바꿔 goal이 처음부터 읽어야 할 때, Codex 계정을 바꿀 때 | `start.sh --skip-stage …`(새 run 폴더, 끝난 stage는 건너뜀) |
 
 - 운영자 재개 launch는 그 stage 마지막 turn 뒤의 manifest 기록(terminal·check·review·`device_verify`·`run_status`·`stop_reason`)과 장치 정지 뒤 받아들인 `.ack`를 resume turn에 사실로 싣는다. 그 밖의 결정을 전해야 하면 사용자 허락을 받아 `LAUNCH_NOTE`로 준다.
 - thread는 시작한 Codex home에서만 이어진다.
-- 연속 run은 handoff가 기록된 뒤에는 Stage 6·7만 재개한다. handoff 전에 멈췄으면 `RESUME_STAGE=6`으로 재개해 후보를 다시 고른다.
-- **장치 정지(126):** 러너 자동 검증(`--device-stop-verifier all`)이 통과하면 같은 stage를 횟수 한도 없이 재개한다. 러너 검증이 실패했거나 holder가 남으면 아래 "멈추기"를 따른다.
+- 기다리는 인터럽트와 받는 답은 멈춘 launch의 log 끝이나 `history.sh <run>`(읽기 전용)으로 본다. 답 launch는 manifest에 `graph_launch=interrupted`와 `graph_resume_with=<답>`을 남긴다. 인터럽트 없는 정지(러너가 기록 없이 죽어 checkpoint가 pending, 기록된 정지로 graph가 끝남, launch drain이 막힘)는 `resume.sh`로 재개한다.
+- 연속 run은 handoff가 기록된 뒤에는 Stage 7·8만 재개한다. handoff 전에 멈췄으면 `RESUME_STAGE=7`로 재개해 후보를 고른다.
+- **장치 정지(126):** 러너 자동 검증(`--device-stop-verifier all`)이 통과하면 같은 launch에서 같은 stage를 횟수 한도 없이 이어 간다(`device_verify_<n>=passed`). 러너 검증이 실패했거나 holder가 남으면(`stop_reason=device-verifier-failed`) 아래 "멈추기"를 따른 뒤 `resume-with.sh`로 답한다(run은 `await_ack`에서 기다린다).
 - 러너가 스스로 하는 재개(usage limit 대기, turn 오류 뒤 1회, controller crash 뒤 checkpoint)와 종료 기록(`run_status`·exit)은 operator.md "What the runner does on its own"·"Continuous run"에 있다.
 
 ## 멈추기(장치 안전)
@@ -233,7 +261,8 @@ wrapper가 `stop-device-work`(exit 126, 기한 종료 포함)로 끝났거나 wr
 
 - 장치를 다시 열지 않는다(`verify_device.py` 포함). hang 장치를 다시 열면 PCIe 이탈이 난다(026차 조사).
 - 명령 log 끝에 mesh close가 있고 holder가 없을 때만, 사용자 승인 뒤 wrapper로 verifier를 1회 돌린다. 그 밖에는 재부팅한다.
-- verifier가 통과했거나 재부팅한 뒤에는 그 registration 옆에 `wrappers/<registration>.ack`(이유·누구·언제 한 줄)를 두고 같은 run으로 재개한다. drain은 ack된 기록을 해결로 치고 원래 기록은 그대로 둔다. registry를 옮기거나 새 run을 띄우지 않는다.
+- verifier가 통과했거나 재부팅한 뒤에는 `resume-with.sh <run> '{"decision":"verified-resume","note":"<누구, 언제, verifier 통과 또는 재부팅>"}'`로 같은 run을 재개한다. 러너가 blocking 기록마다 `wrappers/<registration>.ack`에 note를 적고 drain한 뒤 같은 stage thread를 잇는다. `.ack`를 손으로 쓰고 `resume.sh`로 띄우면 거부된다.
+- 인터럽트 없이 launch drain에서 막힌 경우(러너가 장치 명령 중에 죽음, `stop_reason=wrapper-drain-at-launch`)만 `.ack`(이유·누구·언제 한 줄)를 손으로 두고 `resume.sh`로 재개한다. drain은 ack된 기록을 해결로 치고 원래 기록은 그대로 둔다. registry를 옮기거나 새 run을 띄우지 않는다.
 - `continue-stage`로 끝난 명령 실패는 drain을 막지 않는다.
 
 ## 인증이 풀렸을 때
@@ -249,7 +278,7 @@ grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rol
 
 ## 연속 run 후보와 serving stack
 
-- **후보:** 러너가 Stage 5 뒤 operator.md "Continuous run" 규칙으로 고르고 사용자 승인을 묻지 않는다. 고정하려면 `AVIRON_BRINGUP_SERVING_CANDIDATE`를 준다.
+- **후보:** 러너가 entry stage(Stage 6, `--serving-after optimized-full-model`이면 Stage 5) 뒤 operator.md "Continuous run" 규칙으로 고르고 사용자 승인을 묻지 않는다. 고정하려면 `AVIRON_BRINGUP_SERVING_CANDIDATE`를 준다.
 - **stack manifest는 run마다 새로 만든다.** 띄우기 직전의 checkout으로 만들고, 옛 manifest는 다시 쓰지 않는다. `--create` 전에 vLLM·plugin checkout이 깨끗한지 확인한다. 남은 변경은 그대로 baseline이 된다(045차 044-15).
   ```bash
   $PY $SK/scripts/serving_stack.py --create $CHECKOUT/bringup/serving/stack-<date>-<tag>.json \
@@ -274,9 +303,9 @@ tar -czf "$B" -C models --exclude='*.pt' --exclude='*.tensorbin' --exclude='*.tr
 
 ## 다른 모드(지시가 있을 때만)
 
-- **report run:** `--serving-after`를 뺀다. Stage 5 뒤 `run_status=awaiting-user-selection`으로 끝난다.
-- **Stage 4에서 serving으로:** `--serving-after 4`. MMLU가 없어 final default를 쓸 품질 근거가 없다.
+- **report run:** `--serving-after`를 뺀다. Stage 6 뒤 `run_status=awaiting-user-selection`으로 끝나고 `await_selection`에서 기다린다. 같은 run의 stage를 다시 돌리려면 `{"decision":"resume","stage":<payload stages 중 하나>}`로 답한다. 고른 후보는 별도 serving run으로 띄운다.
+- **Stage 5에서 serving으로:** `--serving-after optimized-full-model`. MMLU가 없어 final default를 쓸 품질 근거가 없다.
 - **Stage 0만:** `--selection-only`.
-- **별도 serving run:** `--serving-only`, `AVIRON_BRINGUP_SERVING_HANDOFF=<handoff>`(`serving_handoff.py create`로 만든 것). 재개는 `RESUME_STAGE=6|7`.
+- **별도 serving run:** `--serving-only`, `AVIRON_BRINGUP_SERVING_HANDOFF=<handoff>`(`serving_handoff.py create`로 만든 것). 재개는 `RESUME_STAGE=7|8`.
 - **대화형:** operator.md "Interactive run".
 - report run, serving run, 연속 run은 서로 재개할 수 없다.

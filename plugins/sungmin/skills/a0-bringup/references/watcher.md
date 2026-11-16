@@ -1,6 +1,6 @@
 # run 운영·감시(watcher)
 
-watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~7)가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
+watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8)가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
 
 - 실행 명령(시작 전 확인, dry-run, 시작, 재개)은 [run.md](run.md), 공통 운영 규칙은 [../SKILL.md](../SKILL.md), 상태 보기·멈추기·인증도 [run.md](run.md)에 있다. 이 문서는 언제 무엇을 할지만 정한다.
 - 실행 장비와 시험 장비는 그때 사용할 수 있는 것으로 정한다. 작업 프롬프트나 `aviron-skills/TODO.md`에 적힌 대로 따르고, 이 문서에서는 고정하지 않는다.
@@ -20,7 +20,8 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
 - 장치를 다시 열지 않는다. verifier도 포함한다.
 - log, 구조화 기록, PID, holder를 보존한다.
 - 사용자에게 알린다.
-- 사용자가 승인하면 verifier를 1회 돌린다. 통과하면 `.ack`를 쓰고 같은 run을 재개한다([run.md](run.md) "멈추기"·"재개").
+- 사용자가 승인하면 verifier를 1회 돌린다. 통과하면 `resume-with.sh <run> '{"decision":"verified-resume","note":"..."}'`로 같은 run을 재개한다(러너가 `.ack`를 쓴다; [run.md](run.md) "멈추기"·"재개"). `.ack`를 손으로 쓰는 것은 인터럽트 없는 launch drain 정지 때만이다.
+- 러너 자동 검증(`device_stop_verifier=all`)이 통과해 같은 launch에서 이어 갔으면(`device_verify_<n>=passed`) 멈출 일이 아니다. 기록하고 보고한다.
 
 사용자 확인이 필요한 일은 skills·plugin push와 데이터 삭제다. 확인을 기다리는 동안에도 run은 local commit으로 계속 돌린다.
 
@@ -59,7 +60,7 @@ wrapper 기록 판독:
 | `teardown=unconfirmed`, recovery 기록 UMD 0/0, holder 없음 | 장치를 열지 않은 host 명령 | 정상 |
 | `disposition=profile-failed` | profile 산출물 누락(막지 않음) | 에이전트가 고친다 |
 | exit 124, `classification=host-deadline`, `continue-stage` | deadline까지 끝나지 않았지만 장치를 연 적이 없다(deadline 시점 holder 없음, mesh 증거 없음, log에 UMD open 줄 없음) | 명령 실패로 본다. 에이전트가 고친다 |
-| exit 126, `stop-device-work`, UMD open > close, holder 남음 | 장치 정지 | 멈춘다(위 "멈추는 경우"). 러너는 그 goal이 끝나면 terminal status를 남기고 `run_status=stop-device-work`, exit 126으로 끝난다 |
+| exit 126, `stop-device-work`, UMD open > close, holder 남음 | 장치 정지 | 러너 자동 검증이 먼저 돈다. 통과하면 이어 가고, 실패하면 exit 126(`stop_reason=device-verifier-failed`)으로 끝나 `await_ack`에서 기다린다. 그때 멈춘다(위 "멈추는 경우") |
 
 새 장치 명령을 막는 disposition은 `stop-device-work`·`incomplete`·`not-started`뿐이다.
 
@@ -86,7 +87,7 @@ event --> device stop? --yes--> stop: no reopen, preserve, notify user
   - 메모로 우회할 수 있고 사용자가 메모를 허락하면 우회하고, 고치는 것은 run 뒤에 한다.
   - 꼭 고쳐야 진행되면 장치 명령이 없을 때 runner를 멈춘다. 실행 clone에 commit하고, 그 Stage부터 새 세션을 시작한다(끝난 Stage는 `--skip-stage`).
 - **runner·환경 문제**(패키지, 참조, 디스크, 인증): 원인을 고치고 같은 run을 재개한다.
-- **controller crash·재개 거부**: unit이 기록 없이 죽었으면 같은 `RUN_DIR`로 재개한다(checkpoint 단계부터 이어 감). `stop_reason=graph-reconcile:<node>`(exit 3)는 remediation·checker fix 중에 죽은 것이니 stage 기록을 보고 같은 stage로 재개한다. exit 1 재개 거부(schema·manifest·다른 minor version으로 시작한 run·`RESUME_STAGE`)는 메시지를 읽고 원인을 고친 뒤 띄운다. 자동으로 반복하지 않는다. 인증은 [run.md](run.md) "인증이 풀렸을 때"를 따른다.
+- **controller crash·재개 거부**: unit이 기록 없이 죽었으면 같은 `RUN_DIR`로 재개한다(checkpoint 단계부터 이어 감). `stop_reason=graph-reconcile:<node>`(exit 3)는 remediation·checker fix 중에 죽은 것이니 stage 기록을 보고 hold 인터럽트에 답한다: `resume-with.sh <run> '{"decision":"resume"}'`(RUN_DIR 재개는 거부된다). exit 1 재개 거부(schema·manifest·다른 minor version으로 시작한 run·`RESUME_STAGE`·인터럽트에서 기다리는 run의 RUN_DIR 재개·payload와 맞지 않는 `--resume-with`)는 메시지를 읽고 원인을 고친 뒤 띄운다. 자동으로 반복하지 않는다. 인증은 [run.md](run.md) "인증이 풀렸을 때"를 따른다.
 - 같은 실패를 설정 변경 없이 되풀이시키지 않는다.
 - 사용자 승인을 대신 적지 않는다(`approved_by: user` 같은 파일). 승인 없이 되는 다른 길을 찾는다.
 
@@ -106,18 +107,18 @@ event --> device stop? --yes--> stop: no reopen, preserve, notify user
 2. run 동안 보류했던 skills 반영을 한다. 실행 clone에서 고치고 시험한 뒤 commit한다(push는 사용자 확인).
 3. 보고한다.
    - Stage별 시간
-   - Stage 5 6길이 TTFT/TPS
+   - Stage 6 6길이 TTFT/TPS
    - MMLU 대 HF(drop, paired SE)
    - serving TTFT·TPOT·ITL p50/p99·t/s/u
-   - batch 4(`--max-batch 4`): Stage 5 batch 표(capacity별 TTFT·throughput), batch 4 MMLU와 batch 1 대비, Stage 6 server C(batch 검사 `batch_checks.json`·c=4 benchmark, `readiness_vllm_batch/`). server 1은 c=1(`readiness_vllm/`)이다
-   - Stage 7 판정
+   - batch 4(`--max-batch 4`): Stage 6 batch 표(capacity별 TTFT·throughput), batch 4 MMLU와 batch 1 대비, Stage 7 server C(batch 검사 `batch_checks.json`·c=4 benchmark, `readiness_vllm_batch/`). server 1은 c=1(`readiness_vllm/`)이다
+   - Stage 8 판정
    - 결함과 개입
 4. final default를 확인한다. 후보 승인은 묻지 않는다.
    - 연속 run은 러너가 자기가 고른 후보로 직접 쓴다. manifest `final_default`를 본다(마지막 값이 `pending`이면 작성 중 멈춘 것이니 파일 상태를 보고 script로 다시 쓴다).
      - `written`: `final_approval`과 `final_default_drop_points`를 보고에 넣는다.
-     - `skipped:<이유>`: 이유를 보고한다. entry Stage 4 run(`--serving-after 4`)은 MMLU가 없어 `skipped:no-quality`다.
+     - `skipped:<이유>`: 이유를 보고한다. entry Stage 5 run(`--serving-after optimized-full-model`)은 MMLU가 없어 `skipped:no-quality`다.
    - report run 뒤에는 같은 script로 쓴다: `$PY $SK/scripts/final_default.py --model-dir <autoport> --handoff <handoff> --selected-by runner:<rule>`
-   - script가 쓰는 것: `selected_precision_config.json`, `quality_confirmation.json`(Stage 5 MMLU 재사용, handoff validate), ledger C
+   - script가 쓰는 것: `selected_precision_config.json`, `quality_confirmation.json`(Stage 6 MMLU 재사용, handoff validate), ledger C
    - script는 유효성(1,368문항, config·source identity, handoff)만 확인한다. MMLU drop은 정보다.
 
 ## 운영 습관
