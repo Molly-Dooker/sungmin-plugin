@@ -28,7 +28,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(Codex 러너, LangGraph)
 
 | 변수 | 뜻 | 기본값 |
 |---|---|---|
-| `REPO` | aviron-skills, aviron-transformers, tt-metal-e2, vllm, vllm-aviron-plugin, python_env_ttt가 있는 폴더 | `/home/bos/repo` |
+| `REPO` | aviron-skills, aviron-transformers, tt-metal-e2, vllm, vllm-aviron-plugin, python_env가 있는 폴더 | `/home/bos/repo` |
 | `CODEX_HOME` | run 전용 Codex home | `/home/bos/.codex2` |
 | `CODEX_BIN` | 실제 codex 바이너리 | `/home/bos/.local/bin/codex` |
 | `WORK_ROOT` | run 작업 폴더의 상위 폴더 | `/home/bos/bt_work` |
@@ -40,7 +40,8 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(Codex 러너, LangGraph)
 - 문서와 기록은 host sungmin에 쓴다. 코드 작업과 commit·push는 별도 지시가 없으면 실행 서버 `$REPO` 안의 저장소에서 직접 한다(11-04 사용자 지시). skills는 `$REPO/aviron-skills`, 참조 aviron-transformers clone은 `$REPO/aviron-transformers`, tt-metal-e2는 `$REPO/tt-metal-e2`다.
 - skills 플러그인은 `aviron-model-bringup`(`bos-semi/aviron-skills`, plugin ID `aviron-model-bringup@aviron-skills`)이다. version `0.NN.x` = 차수 `0NN`이다. 저장소에는 branch `develop` 하나만 있고 버전은 tag `vX.Y.Z`로 구분한다. 지금 `develop`·tag·차수는 `aviron-skills/TODO.md`에, 옛 플러그인(`tt-model-bringup-a0`)과 branch 이력은 `aviron-skills/history.md`와 `aviron-skills/rounds/_legacy/`에 있다.
 - skills 수정·시험·commit은 별도 clone이 아니라 실행 clone `$REPO/aviron-skills`에서 직접 한다(11-10 사용자). run 지침 변경은 `aviron-model-bringup` 플러그인에서만 한다.
-- 참조 aviron-transformers는 skills submodule이 아니라 run 환경 `python_env_ttt`에 설치한 package `tt_transformers`다. skills의 pin commit에 checkout한 clone에서 non-editable `pip install --no-deps`로 설치하고, 러너가 설치된 파일 hash를 pin과 대조한다(다르면 launch 전에 error). 구축 절차는 skills 루트 README "Build the run Python environment"에 있다. 참조 코드를 고치면 clone에서 commit하고 skills의 `PIN`·`PIN_SOURCE_HASH`와 설치를 새 commit에 맞춘다.
+- **run 환경(11-18~):** tt-metal-e2 checkout 하나(`$REPO/tt-metal-e2`, Python 3.12로 빌드)와 uv 가상환경 하나(`$REPO/python_env`, Python 3.12)로 develop(Codex 러너)과 DA(Deep Agents 러너)를 모두 돌린다. DA는 실행 clone의 local branch `DA`다(push 안 함, 실험). 별도 clone·worktree를 두지 않고, run이 없을 때 `git checkout DA`로 바꿔 돌린 뒤 `develop`으로 되돌린다. 구축·재빌드 주의점은 [references/run.md](references/run.md) "run 환경"과 skills 루트 README "Build the run Python environment"에 있다.
+- 참조 aviron-transformers는 skills submodule이 아니라 run 환경 `python_env`에 설치한 package `tt_transformers`다. skills의 pin commit에 checkout한 clone에서 non-editable `--no-deps`로 설치하고, 러너가 설치된 파일 hash를 pin과 대조한다(다르면 launch 전에 error). 구축 절차는 skills 루트 README "Build the run Python environment"에 있다. 참조 코드를 고치면 clone에서 commit하고 skills의 `PIN`·`PIN_SOURCE_HASH`와 설치를 새 commit에 맞춘다.
 - tt-metal-e2의 run 산출물은 `bringup/`, autoport는 `models/autoports/`이고 둘 다 git 추적 밖이다. autoport 안 운영자 개입 기록은 autoport `doc/INTERVENTIONS.md`가 원본이다. tt-metal-e2 B2B 브랜치는 갱신하지 않는다.
 
 ## 공통 운영 규칙

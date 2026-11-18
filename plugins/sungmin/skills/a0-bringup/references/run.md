@@ -36,20 +36,57 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 ## 규칙
 
 - **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
-- **참조 설치:** `python_env_ttt`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.1은 `d92e67f`, 0.48.x는 `6054718`.
+- **참조 설치:** `python_env`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.x는 `d92e67f`, 0.48.x는 `6054718`.
+- **Codex 버전:** 0.49.4부터 러너가 Codex CLI 0.169.1을 요구한다(`agent_backend.CODEX_VERSION`). 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
 - **자동 checker 수정:** 끈다(`AVIRON_BRINGUP_AUTO_CHECKER_FIX=off`). checker 결함은 watcher가 run 밖에서 고친다.
 - **Codex home:** 실행 Codex home은 run 동안 러너만 쓴다. VS Code 확장·`codex mcp-server`·다른 app-server가 같은 home을 쓰면 한 프로세스의 토큰 갱신이 나머지에 401을 낸다. `CODEX_BIN`은 항상 실제 바이너리를 준다(PATH의 shim이면 `app-server --listen stdio://`를 못 띄운다).
 - **호스트 메모리:** A0에 TT 모델이 올라가 있거나 장치 명령이 도는 중이면 HF 모델을 올리지 않는다.
 
+## run 환경(11-18~)
+
+tt-metal-e2 checkout 하나와 uv 가상환경 하나로 develop과 DA를 모두 돌린다. 구축 절차의 원본은 skills 루트 README "Build the run Python environment"(develop·DA 각 branch)이고, 여기에는 운영에서 걸리는 점만 적는다. 근거는 sungmin `aviron-skills/장기검토/구조개선검토/조사/DA_python환경통합_myA0_20261118.md` 10절이다.
+
+```text
+$REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12
+$REPO/python_env         uv venv --seed, Python 3.12 (develop + DA packages)
+$REPO/aviron-skills      execution clone: develop (Codex runner) | local branch DA (Deep Agents runner)
+```
+
+- **tt-metal-e2 재빌드:** 반드시 환경을 PATH 앞에 두고 빌드한다. `build_metal.sh`는 PATH의 `python3`로 binding(`ttnn/ttnn/_ttnn.so`)을 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다.
+  ```bash
+  cd $CHECKOUT && PATH=$REPO/python_env/bin:$PATH VIRTUAL_ENV=$REPO/python_env ./build_metal.sh --build-type Release
+  $PY -c 'import ttnn; ttnn.bos_quantize_fused'   # then devcheck.sh (device smoke)
+  ```
+- **checkout 하나 = Python 하나:** `_ttnn.so` 이름에 Python 버전 표시가 없다. 한 checkout을 두 Python 버전 환경이 함께 쓸 수 없다. 다른 버전이 필요하면 별도 checkout에서 빌드한다.
+- **`env_set.sh`:** venv 경로를 꼭 둘째 인자로 넘긴다(`source $CHECKOUT/env_set.sh bos $REPO/python_env`). 인자가 없으면 `$CHECKOUT/python_env`를 찾는데, 그 3.10 환경은 11-18에 지웠다(활성화 없이 지나간다).
+- **uv:** `uv venv --seed`로 만든다(pip가 있어야 한다: develop pin 설치기, `ensure_tools.py`, `prepare_references.py`가 `python -m pip`를 쓴다). Python은 `~/.local/share/uv/python/` 아래 uv 설치본이고, venv는 minor symlink(`cpython-3.12-…`)를 가리킨다. uv로 3.12 patch를 올리면 venv의 interpreter도 바뀌므로, 재현성을 따질 때는 `$PY -V`를 기록한다. `~/.local/share/uv/python/`을 지우면 환경이 깨진다.
+- **pin:** `pyarrow==25.0.1`(26은 NumPy 2를 요구해 lm_eval import가 깨진다). develop `requirements-controller.txt`와 DA `requirements-da.txt`는 같은 langgraph·langchain 버전 집합이다(langgraph 1.2.22 등). 한쪽만 올리면 다른 쪽 러너가 시작을 거부한다.
+- **Codex:** `$CODEX_BIN`(`~/.local/bin/codex`)은 `codex update`로 올린다. 설치기가 `~/.bashrc` 끝에 PATH 줄을 더할 수 있다. 버전을 올리면 skills `agent_backend.CODEX_VERSION`과 맞아야 develop 러너가 시작한다.
+
+### DA branch run
+
+DA는 실험 branch다. 지시가 있을 때만 돌린다. 명령의 원본은 DA branch의 `plugins/aviron-model-bringup/skills/model-bringup/references/operator.md`다.
+
+```bash
+git -C $REPO/aviron-skills status --porcelain && git -C $REPO/aviron-skills checkout DA   # only when no run is going
+# ... DA run ...
+git -C $REPO/aviron-skills checkout develop                                              # after the run ends
+```
+
+
+- `SK=$REPO/aviron-skills/plugins/aviron-model-bringup`(DA checkout 상태), `PYTHON_BIN=$PY`(같은 `python_env`). Codex 변수(`CODEX_*`, `AVIRON_BRINGUP_CODEX_HOME`)는 쓰지 않는다. 모델은 `AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra REVIEW_EFFORT=medium`(기본값과 같다).
+- 실제 launch에는 `OPENAI_API_KEY`가 필요하다(myA0 `~/.bashrc`). key는 명령줄·log·파일에 쓰지 않는다. myA0의 systemd 249는 `systemd-run --setenv=OPENAI_API_KEY`(값 없는 형식)를 받지 않으므로 `systemctl --user import-environment OPENAI_API_KEY`로 넘기고 unit을 띄운 직후 `systemctl --user unset-environment OPENAI_API_KEY`로 지운다.
+- 같은 장치를 쓰므로 develop run과 동시에 돌리지 않는다(장치 lock). run 중에는 branch를 바꾸지 않는다(실행 clone 고정). develop run을 시작하기 전에 clone이 `develop`인지 확인한다.
+
 ## 준비 값
 
 | 변수 | 값 |
 |---|---|
-| `CHECKOUT` | `$REPO/tt-metal-e2`. commit을 바꾸면 `./build_metal.sh --build-type Release`로 다시 빌드한다 |
+| `CHECKOUT` | `$REPO/tt-metal-e2`(Python 3.12 빌드). commit을 바꾸면 아래 "run 환경"의 명령으로 다시 빌드한다 |
 | `SK` | `$REPO/aviron-skills/plugins/aviron-model-bringup` |
-| `PY` | `$REPO/python_env_ttt/bin/python`. 러너 LangGraph 패키지, serving stack(vLLM + BOS plugin), 참조 `tt_transformers`(pin, non-editable)가 이 환경에 있다. 구축은 skills 루트 README "Build the run Python environment" |
+| `PY` | `$REPO/python_env/bin/python`(Python 3.12, uv). develop 러너 pin 패키지, DA 러너 패키지(deepagents 등), ttnn, serving stack(vLLM + BOS plugin), lm_eval, 참조 `tt_transformers`(pin, non-editable)가 모두 이 환경에 있다. 구축은 skills 루트 README "Build the run Python environment" |
 | `STACK` | 이번 run용으로 새로 만든 serving stack manifest(`bringup/serving/stack-<date>-<tag>.json`) |
 | `HF_MODEL`, `MODEL_DIR` | `MODEL_DIR=models/autoports/<model ID 소문자, 영숫자 밖은 _>` |
 
@@ -62,13 +99,13 @@ unset "${!BOS_BRINGUP_@}"   # old names: runner refuses to start (exit 2)
 unset RUN_DIR RESUME_STAGE RUN_MULTIGOAL_LOG_DIR AVIRON_BRINGUP_CHECKOUT_SNAPSHOT AVIRON_BRINGUP_BATCH_SCOPE AVIRON_BRINGUP_MAX_BATCH LAUNCH_NOTE
 export REPO=<REPO>
 export CHECKOUT=$REPO/tt-metal-e2 SK=$REPO/aviron-skills/plugins/aviron-model-bringup
-export PY=$REPO/python_env_ttt/bin/python STACK=<stack manifest>
+export PY=$REPO/python_env/bin/python STACK=<stack manifest>
 export CODEX_HOME=<CODEX_HOME>
 export AVIRON_BRINGUP_CODEX_HOME=$CODEX_HOME
 export CODEX_BIN=<CODEX_BIN> PYTHON_BIN=$PY
 export AVIRON_BRINGUP_AUTO_CHECKER_FIX=off
 export AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export CODEX_MODEL=gpt-6.1-sol CODEX_EFFORT=medium REVIEW_MODEL=gpt-6-astra REVIEW_EFFORT=medium
+export CODEX_MODEL=gpt-6.2-sol CODEX_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra REVIEW_EFFORT=medium   # 0.49.4 defaults
 export HF_MODEL=<org/model> MODEL_DIR=models/autoports/<model_dir>
 ```
 
@@ -81,7 +118,7 @@ offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run
   ```bash
   cd $CHECKOUT && env -u AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY PYTHON_BIN=$PY python3 $SK/scripts/prepare_references.py ensure --hf-model $HF_MODEL
   ```
-- 장소는 GPU host → 로컬 GPU → CPU 순서다. GPU host는 git 추적 밖의 `bringup/reference_hosts.local.md`에 ` ```json ` block(`{"hosts": [{"name", "ssh", "workdir", "python", "min_free_gb", "max_gpu_util"}]}`)으로 적는다. 원격 venv는 `$PY`의 패키지 버전으로 만들고(`python3.10`이 없으면 `python3`) 끝나면 지운다.
+- 장소는 GPU host → 로컬 GPU → CPU 순서다. GPU host는 git 추적 밖의 `bringup/reference_hosts.local.md`에 ` ```json ` block(`{"hosts": [{"name", "ssh", "workdir", "python", "min_free_gb", "max_gpu_util"}]}`)으로 적는다. 원격 venv는 `$PY`의 Python(3.12)·패키지 버전으로 만들고(원격에 3.12가 없으면 uv로 받는다) 끝나면 지운다.
 - 러너는 launch마다 Stage 4·6 가운데 처음 도는 stage 앞에서 `ensure`를 부르고 끝날 때까지 기다린다(`<run>/references.log`). 준비되지 않으면 그 stage 전에 멈춘다(exit 8).
 - 세트는 `references.json`의 revision·protocol·dtype·파일 hash가 맞으면 다시 쓴다. 맞지 않으면 옛 폴더를 `<revision>.superseded-<시각>`으로 옮기고 새로 만든다.
 - `references environment: match|differs: …|unrecorded`는 기록만 하는 정보다. 패키지 버전 같은 생산 환경이 달라도 세트를 그대로 쓰고, 러너는 manifest에 `references_environment`(차이가 있으면 `references_environment_diff`)를 남긴다. 보고서에는 참조 생산 환경과 run 환경을 나란히 적는다.
@@ -96,7 +133,10 @@ source launch.env
 env | grep '^BOS_BRINGUP_'                                     # 없어야 한다
 git -C $REPO/aviron-skills status --porcelain -- plugins/aviron-model-bringup   # 비어 있어야 한다
 git -C $REPO/aviron-skills rev-parse HEAD origin/develop <tag>^{commit}      # 같아야 한다
-$PY -c 'import tt_transformers; print(tt_transformers.__file__)'   # python_env_ttt site-packages 아래여야 한다
+$PY -V                                                         # Python 3.12.x
+$PY -c 'import tt_transformers; print(tt_transformers.__file__)'   # python_env site-packages 아래여야 한다
+$PY -c 'import ttnn; print(ttnn.__file__)'                     # $CHECKOUT/ttnn/ttnn 아래여야 한다
+$CODEX_BIN --version                                           # 0.49.4: codex-cli 0.169.1
 $PY $SK/scripts/reference_source.py                            # 오류 없이 실행 clone의 pin commit이 나와야 한다
 cd $CHECKOUT && git status --short | head -3 && git log --oneline -1
 $PY -I $SK/runtime/readiness_check/e2_checkout.py --tt-metal-home $CHECKOUT | grep -E '"skips"|"commit"'
@@ -112,7 +152,7 @@ CODEX_HOME=$CODEX_HOME $CODEX_BIN login status
 
 - **W8A8 e2 op:** skills 0.49.x 참조는 W8A8 activation을 `ttnn.bos_quantize_fused`로 양자화한다. 이 op이 없는 e2(`f3348a2aac` 앞, 예: `629307f1bc`)에서는 Stage 1에서 멈출 것이므로, 오류가 나면 run 전에 e2를 `develop` 최신으로 올려 Release로 다시 빌드한다. 러너는 이것을 보지 않는다(049 D3 사용자 결정, sungmin `aviron-skills/rounds/049/1_개선안.md`).
 - **프로세스 확인:** `pgrep -f`는 쓰지 않는다. `ssh <server> '…'`로 돌리면 패턴이 원격 셸의 명령줄에도 들어가 pgrep이 그 셸을 찾는다. `ps … | grep "[r]un_…"`는 셸과 grep의 명령줄에 적힌 `[r]un_…`가 패턴과 맞지 않아 겹치지 않는다. 같은 ssh 명령 안에 괄호 없는 이름(예: `run_bringup`)을 함께 적으면 ps 줄도 그 셸을 찾으니 따로 돌린다(049 myA0 확인).
-- **참조 pin:** `reference_source.py`가 "differs from the pinned source hash"로 실패하면 `python_env_ttt`에 다른 pin이 설치돼 있는 것이다. 위 "규칙"의 참조 설치를 따른다.
+- **참조 pin:** `reference_source.py`가 "differs from the pinned source hash"로 실패하면 `python_env`에 다른 pin이 설치돼 있는 것이다. 위 "규칙"의 참조 설치를 따른다.
 - 참조 `check`는 `--python`의 환경과 비교한다. 빼면 다른 환경과 비교해 차이가 크게 나온다. revision·protocol·파일 hash가 다르거나 세트가 없으면 not ready이고, run 전에 만든다.
 - **장치 확인:** `devcheck.sh <작업 폴더>`로 wrapper 300 s 1회 `verify_device.py`를 돌려 pass·`mesh-close-confirmed`·holder 없음을 본다.
 - **autoport:** 이전 run의 autoport가 남아 있으면, 접거나 취소한 run이면 지운다. 결과가 있는 run이면 아래 "산출물 백업"대로 압축·대조한 뒤 지운다.
