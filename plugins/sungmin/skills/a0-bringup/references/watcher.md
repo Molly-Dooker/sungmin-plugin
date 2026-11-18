@@ -1,6 +1,6 @@
 # run 운영·감시(watcher)
 
-watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8)가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
+watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8; stage 에이전트는 그 run의 러너 `deepagents`나 `codex`, [run.md](run.md) "러너 선택")가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
 
 - 실행 명령(시작 전 확인, dry-run, 시작, 재개)은 [run.md](run.md), 공통 운영 규칙은 [../SKILL.md](../SKILL.md), 상태 보기·멈추기·인증도 [run.md](run.md)에 있다. 이 문서는 언제 무엇을 할지만 정한다.
 - 실행 장비와 시험 장비는 그때 사용할 수 있는 것으로 정한다. 작업 프롬프트나 `aviron-skills/TODO.md`에 적힌 대로 따르고, 이 문서에서는 고정하지 않는다.
@@ -25,13 +25,13 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
 
 사용자 확인이 필요한 일은 skills·plugin push와 데이터 삭제다. 확인을 기다리는 동안에도 run은 local commit으로 계속 돌린다.
 
-그 밖의 문제는 멈출 이유가 아니다. checker 오류, runner 정지, 에이전트의 질문, Codex 과부하, 패키지·참조·인증 같은 환경 문제가 여기에 해당한다. "사용자 선택을 기다림" 같은 대기 분기도 만들지 않는다. 후보 승인을 묻지 않는 것이 그 예다(아래 "끝나면").
+그 밖의 문제는 멈출 이유가 아니다. checker 오류, runner 정지, 에이전트의 질문, Codex 과부하나 모델 API 오류, 패키지·참조·인증 같은 환경 문제가 여기에 해당한다. "사용자 선택을 기다림" 같은 대기 분기도 만들지 않는다. 후보 승인을 묻지 않는 것이 그 예다(아래 "끝나면").
 
 ## 준비
 
 [run.md](run.md)의 "시작 전 확인", "dry-run", "시작"을 그대로 거친다. watcher가 더 하는 일은 아래다.
 
-1. 기준을 적는다. skills commit(origin과 같은지), tt-metal commit, serving stack manifest, 실행 설정(Codex home, 실행·리뷰 모델, 플러그인 모드, 자동 checker 수정 끔, HF offline·local only).
+1. 기준을 적는다. skills commit(origin과 같은지), tt-metal commit, serving stack manifest, 실행 설정(러너, codex면 Codex home, 실행·리뷰 모델, 플러그인 모드, 자동 checker 수정 끔, HF offline·local only).
 2. 사용자가 `LAUNCH_NOTE`를 쓰라고 할 때만 넣는다. 그때 담는 내용은 아래와 같다.
    - 기준
    - 이번 결정
@@ -48,6 +48,12 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
   - wrapper registry의 상태 변화
   - 에이전트 메시지와 goal 상태
   - unit 상태
+- **codex 러너만:** 리셋권 감시 unit과 계정 사용량(주간 한도, 리셋권)을 본다([run.md](run.md) "감시 unit").
+- **deepagents 러너:** 계정 한도 감시 대신 아래를 본다.
+  - `<run>/usage.jsonl`: 모델 호출마다 한 줄, role은 `stage`·`subagent:<name>`·`review`다. 누적 token과 호출 수를 본다.
+  - 모델 호출 상한: stage launch 하나에 3000회(stage 에이전트와 subagent 합)를 넘으면 그 시도가 `turn-failed`로 끝난다. 재개하면 그 launch의 수는 0부터 다시 센다.
+  - unit log와 manifest `stage_N_turn_error`의 모델 API 오류.
+  - 비용 상한과 API 한도 대기는 러너에 없다. 얼마에서 멈출지는 정해지지 않았으니 run 전에 사용자에게 묻는다. 작업 폴더의 감시 script(`watch_run0NN.py`)가 deepagents run의 stage jsonl과 `usage.jsonl`을 읽는지는 확인되지 않았다(0.49.x codex run용이다). 첫 deepagents run에서 확인하고 필요하면 고친다.
 - 정상 wrapper와 "아직 실행 중" 같은 진행 알림은 걸러 낸다. 감시는 만료되면(30분) 다시 건다.
 - 사용자에게는 의미 있는 사건만 짧게 보고한다. Stage complete(핵심 수치), 장치 정지, blocked, 결함 발견, run 종료가 여기에 해당한다.
 
@@ -72,22 +78,23 @@ event --> device stop? --yes--> stop: no reopen, preserve, notify user
              v
    +---------+-----------+--------------------+-------------------+
    |                     |                    |                   |
- Codex overload /     agent blocked:       agent blocked:      runner / env
- usage limit          question/decision    skills defect       problem
+ model errors /       agent blocked:       agent blocked:      runner / env
+ limits               question/decision    skills defect       problem
    |                     |                    |                   |
- runner auto-resume   fix cause ->         note if user allows, fix cause,
- (check it resumed)   resume with runner   fix after run; or    resume same run
-                      note (no wait; note  stop -> commit ->    (runner note)
-                      only if user allows) new session from stage
+ codex: runner        fix cause ->         note if user allows, fix cause,
+ auto-resume (check)  resume with runner   fix after run; or    resume same run
+ deepagents: read     note (no wait; note  stop -> commit ->    (runner note)
+ turn_error, resume   only if user allows) new session from stage
 ```
 
-- **Codex `server_overloaded`·usage limit**: runner가 같은 thread를 자동 재개한다. 재개됐는지만 확인한다.
+- **Codex `server_overloaded`·usage limit(codex 러너)**: runner가 같은 thread를 자동 재개한다. 재개됐는지만 확인한다.
+- **모델 API 오류·호출 상한(deepagents 러너)**: runner가 API 오류를 backoff로 재시도하지만 자동 재개는 없다. `stop_reason=turn-failed`(exit 5)로 끝나면 `stage_N_turn_error`를 읽는다. 일시적 오류나 호출 상한이면 `resume.sh`로 같은 thread를 잇는다. key·계정 문제면 [run.md](run.md) "인증이 풀렸을 때"를 따른다. 같은 오류가 재개 뒤에도 나면 되풀이하지 않고 사용자에게 알린다(한도·잔액 대응은 정해지지 않음).
 - **에이전트가 질문·결정 요청으로 blocked**: 권장안을 정하고, 사용자 답을 기다리지 않는다. 기본은 원인(지침·환경)을 고쳐 같은 run·Stage·thread를 메모 없이 재개하는 것이다(러너가 정지 이유를 싣는다). 고칠 수 없으면 그 Stage부터 새 세션을 시작한다. 메모는 사용자가 이미 허락했을 때만 쓴다. 그때는 active wrapper 0과 holder 0을 확인하고, unit이 살아 있으면 멈춘 뒤, 같은 run·Stage·thread를 메모와 함께 재개한다.
 - **에이전트가 skills(checker·지침·runner) 결함으로 blocked**: 실행 clone은 run 중 고정이다([../SKILL.md](../SKILL.md) "공통 운영 규칙").
   - 메모로 우회할 수 있고 사용자가 메모를 허락하면 우회하고, 고치는 것은 run 뒤에 한다.
   - 꼭 고쳐야 진행되면 장치 명령이 없을 때 runner를 멈춘다. 실행 clone에 commit하고, 그 Stage부터 새 세션을 시작한다(끝난 Stage는 `--skip-stage`).
 - **runner·환경 문제**(패키지, 참조, 디스크, 인증): 원인을 고치고 같은 run을 재개한다.
-- **controller crash·재개 거부**: unit이 기록 없이 죽었으면 같은 `RUN_DIR`로 재개한다(checkpoint 단계부터 이어 감). `stop_reason=graph-reconcile:<node>`(exit 3)는 remediation·checker fix 중에 죽은 것이니 stage 기록을 보고 hold 인터럽트에 답한다: `resume-with.sh <run> '{"decision":"resume"}'`(RUN_DIR 재개는 거부된다). exit 1 재개 거부(schema·manifest·다른 minor version으로 시작한 run·`RESUME_STAGE`·인터럽트에서 기다리는 run의 RUN_DIR 재개·payload와 맞지 않는 `--resume-with`)는 메시지를 읽고 원인을 고친 뒤 띄운다. 자동으로 반복하지 않는다. 인증은 [run.md](run.md) "인증이 풀렸을 때"를 따른다.
+- **controller crash·재개 거부**: unit이 기록 없이 죽었으면 같은 `RUN_DIR`로 재개한다(checkpoint 단계부터 이어 감). `stop_reason=graph-reconcile:<node>`(exit 3)는 러너가 반쯤 끝난 단계(wrapper 등록 없는 장치 명령 receipt; codex 러너는 remediation·checker fix 중에 죽은 것도)를 판단하지 못한 것이니 stage 기록을 보고 hold 인터럽트에 답한다: `resume-with.sh <run> '{"decision":"resume"}'`(RUN_DIR 재개는 거부된다). exit 1 재개 거부(schema·manifest·다른 minor version으로 시작한 run·manifest와 다른 러너·`RESUME_STAGE`·인터럽트에서 기다리는 run의 RUN_DIR 재개·payload와 맞지 않는 `--resume-with`)는 메시지를 읽고 원인을 고친 뒤 띄운다. 자동으로 반복하지 않는다. 인증은 [run.md](run.md) "인증이 풀렸을 때"를 따른다.
 - 같은 실패를 설정 변경 없이 되풀이시키지 않는다.
 - 사용자 승인을 대신 적지 않는다(`approved_by: user` 같은 파일). 승인 없이 되는 다른 길을 찾는다.
 
