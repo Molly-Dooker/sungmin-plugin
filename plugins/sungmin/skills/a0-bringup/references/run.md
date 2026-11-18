@@ -114,6 +114,9 @@ export CODEX_BIN=<CODEX_BIN>
 export AVIRON_BRINGUP_AUTO_CHECKER_FIX=off
 # deepagents runner only: OPENAI_API_KEY comes from the calling shell (never written into this file, a command line or a log)
 export HF_MODEL=<org/model> MODEL_DIR=models/autoports/<model_dir>
+export DEV=/dev/bos/0                             # devcheck.sh, diskguard.sh, costguard.sh read it
+# server with several devices (AI001): the run uses one; wrappers and checks inherit it
+# export TT_VISIBLE_DEVICES=0
 ```
 
 offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run 전에 있어야 한다. 직전 run의 작업 폴더에서 복사한 `launch.env`는 0.49.x 것이라 러너 줄이 없고 `CODEX_MODEL`을 쓴다. 위 모양으로 고친다.
@@ -150,6 +153,7 @@ $PY -c 'import ttnn; ttnn.bos_quantize_fused'                  # W8A8: 오류 �
 ls -d $CHECKOUT/$MODEL_DIR                                     # 없어야 한다
 ps -eo pid,etime,cmd | grep -E "[r]un_bringup|[r]un_device_command|[g]raph_controller|[v]llm serve|[E]ngineCore"   # 없어야 한다
 fuser -v /dev/bos/0; lsmod | grep '^bos '                      # holder 없음, 셋째 칸 0
+cat /sys/module/bos/refcnt                                     # 0. 공용 장치 서버는 fuser가 다른 사용자의 holder를 못 본다
 df -h $CHECKOUT
 $PY $SK/scripts/prepare_references.py check --python $PY --hf-model $HF_MODEL --model-dir $MODEL_DIR   # references ready
 $PY $SK/scripts/serving_stack.py --manifest $STACK --installed
@@ -166,6 +170,10 @@ test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력�
 - **참조 pin:** `reference_source.py`가 "differs from the pinned source hash"로 실패하면 `python_env`에 다른 pin이 설치돼 있는 것이다. 위 "규칙"의 참조 설치를 따른다.
 - 참조 `check`는 `--python`의 환경과 비교한다. 빼면 다른 환경과 비교해 차이가 크게 나온다. revision·protocol·파일 hash가 다르거나 세트가 없으면 not ready이고, run 전에 만든다.
 - **장치 확인:** `devcheck.sh <작업 폴더>`로 wrapper 300 s 1회 `verify_device.py`를 돌려 pass·`mesh-close-confirmed`·holder 없음을 본다.
+- **공용 장치(AI001):** 장치를 다른 사용자(docker 안 root 작업)와 함께 쓴다.
+  - `fuser`는 다른 사용자의 holder를 보지 못하므로 `/sys/module/bos/refcnt`(`lsmod` 셋째 칸)가 0인지도 본다.
+  - `devcheck.sh`·`start_unit.sh`는 refcnt가 0이 아니면 시작하지 않는다(050 run 2 작업 폴더).
+  - 장치가 둘 이상인 서버는 `launch.env`에 `TT_VISIBLE_DEVICES`를 두어 run이 쓸 장치 하나만 보이게 한다. AI001은 `/dev/bos/0`(`01:00.0`, Gen4 x4)만 쓴다. `/dev/bos/1`은 x1 링크이고 다른 사용자가 쓴다.
 - **autoport:** 이전 run의 autoport가 남아 있으면, 접거나 취소한 run이면 지운다. 결과가 있는 run이면 아래 "산출물 백업"대로 압축·대조한 뒤 지운다.
 
 ## dry-run
@@ -232,6 +240,13 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 예: `./launch-unit.sh bringup-<model>-<tag>-$(date +%Y%m%dT%H%M) <work>/start.sh`. unit 이름은 `unit.txt`, run 폴더는 `run.txt`에 적는다(감시 script가 읽는다).
 
 - **deepagents의 key:** unit은 셸 환경을 물려받지 않는다. `launch-unit.sh`를 부르는 셸에 `launch.env`를 source하고 `OPENAI_API_KEY`가 있어야 한다. systemd 249(Ubuntu 22.04)는 `systemd-run --setenv=OPENAI_API_KEY`(값 없는 형식)를 받지 않아 위처럼 user manager로 넘기고 바로 지운다(operator.md "Start a run"). key를 명령줄·log·파일에 쓰지 않는다. 러너는 key를 에이전트 shell·장치 wrapper·check에 넘기지 않는다.
+  - key가 `~/.bashrc`의 interactive 구간에만 있으면(AI001), ssh 명령이나 unit 셸에는 없다. 작업 폴더에 `key.sh`(chmod 600)를 두고, `launch-unit.sh`가 deepagents일 때 `import-environment` 전에 source한다. 값은 출력하지 않는다.
+    ```bash
+    # key.sh (source it): OPENAI_API_KEY from ~/.bashrc into this shell, never printed
+    if [ -z "${OPENAI_API_KEY:-}" ]; then eval "$(grep -E '^[[:space:]]*export[[:space:]]+OPENAI_API_KEY=' ~/.bashrc | tail -1)"; fi
+    [ -n "${OPENAI_API_KEY:-}" ] || { echo "OPENAI_API_KEY missing" >&2; return 1 2>/dev/null || exit 1; }
+    ```
+  - 띄운 뒤 `systemctl --user show-environment | grep -c OPENAI_API_KEY`가 0인지 본다(050 run 2: 0).
 - **codex:** 위 두 `systemctl` 줄은 돌지 않는다. `CODEX_BIN`·`AVIRON_BRINGUP_CODEX_HOME`은 `launch.env`가 준다.
 - user unit으로 띄운다(`loginctl enable-linger`). 터미널에 묶이면 세션과 함께 죽는다.
 - `KillMode=mixed`: unit을 멈추면 SIGTERM이 러너에만 간다. 러너는 새 장치 명령을 막고, 진행 중인 wrapper를 기한 안에 drain한 뒤 끝난다.
@@ -244,9 +259,9 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 ## 감시 unit
 
-run마다 세 개를 띄운다. 판단 규칙은 [watcher.md](watcher.md)다.
+run마다 세 개를 띄운다(run 감시, 디스크 보호, 그리고 codex는 리셋권 감시, deepagents는 비용 감시). 판단 규칙은 [watcher.md](watcher.md)다.
 
-- **run 감시:** 직전 작업 폴더의 `watch_run0NN.py`를 복사한다. manifest 주요 줄, 비정상 wrapper 기록, 리뷰 verdict, unit 상태, unit 뒤 holder, 디스크를 30 s마다 `events.log`에 적는다. `waitev.sh [분]`은 중요한 줄이 생기거나 unit이 끝날 때까지 기다린다.
+- **run 감시:** 직전 작업 폴더의 `watch_run0NN.py`를 복사한다(최신: 050 `watch_run050.py`). manifest 주요 줄, 비정상 wrapper 기록, 리뷰 verdict, unit 상태, unit 뒤 holder, 디스크를 30 s마다 `events.log`에 적는다. deepagents run에서는 `--usage-py <plugin>/skills/a0-bringup/scripts/usage.py`를 주면 `usage.jsonl` 합계를 60분마다 낸다. `waitev.sh [분]`은 중요한 줄이 생기거나 unit이 끝날 때까지 기다린다. 패턴에 `cost`·`turn_error`를 넣는다.
   ```bash
   systemd-run --user --unit=watch-r0NN-<model> -p StandardOutput=append:<work>/watch.out -p StandardError=append:<work>/watch.out \
     $PY <work>/watch_run0NN.py --name <name> --run-dir <run> --unit-file <work>/unit.txt --events <work>/events.log --disk-path $CHECKOUT
@@ -256,6 +271,17 @@ run마다 세 개를 띄운다. 판단 규칙은 [watcher.md](watcher.md)다.
   systemd-run --user --unit=diskguard-r0NN-<model> -p StandardOutput=append:<work>/diskguard.out -p StandardError=append:<work>/diskguard.out \
     bash <work>/diskguard.sh 6
   ```
+- **비용 감시(deepagents 러너만):** 이 plugin의 `scripts/costguard.sh`가 60 s마다 `scripts/usage.py`로 `<run>/usage.jsonl`의 USD 추정을 계산한다.
+  - 알림 단계(기본 25·50·100·200)마다 한 번 `events.log`에 `cost alert` 줄을 쓴다.
+  - 상한에 닿으면 아래 "멈추기" 1·2·4를 한다. 아무것도 지우지 않는다.
+  - 상한은 run 전에 사용자에게 묻는다(050 run 2: 300 USD, 실제 약 66.47 USD).
+  - 단가는 `usage.py`의 `PRICE`이고, 모델이나 가격표가 바뀌면 고친다.
+  - `watch_run050.py`의 `--cost-alerts`와 알림이 겹치므로, 둘 중 하나만 켠다. 감시 script 쪽을 끄려면 `--cost-alerts ""`로 띄운다.
+  ```bash
+  systemd-run --user --unit=costguard-r0NN-<model> -p StandardOutput=append:<work>/costguard.out -p StandardError=append:<work>/costguard.out \
+    bash <plugin>/skills/a0-bringup/scripts/costguard.sh <work> <limit USD> 25,50,100,200
+  ```
+  `<plugin>`은 설치된 sungmin-plugin 경로다. 실행 서버에 없으면 두 파일을 작업 폴더로 복사해 쓴다.
 - **리셋권 감시(codex 러너만):** deepagents run에는 띄우지 않는다(ChatGPT 계정 한도가 아니라 모델 API를 쓴다). 043 `codex_limit_watch.py`를 `$LIMITWATCH`로 복사한다. 띄우기 전에 `--read-now`로 사용량·reset 시각·남은 리셋권을 기록한다. 99% 이상, 한도 도달, usage-limit 대기 중 하나가 생기면 리셋권을 한 번 쓴다. 같은 계정 감시는 한 서버에만 둔다(041차, 서버 표). 리셋권이 0이면 99%에서 사용자에게 알린다.
   ```bash
   systemd-run --user --unit=codex2-reset-watch-r0NN-<model> ... $PY codex_limit_watch.py --codex-home $CODEX_HOME \
@@ -366,6 +392,33 @@ tar -czf "$B" -C models --exclude='*.pt' --exclude='*.tensorbin' --exclude='*.tr
 
 - 전체 사본이 필요하면 `--exclude`를 빼고 같은 방식으로 만든다.
 - 다른 서버의 산출물은 그 서버에서 압축·대조한 뒤 백업 위치로 옮긴다. 백업 경로와 크기는 차수 run 기록에 적는다.
+
+## 사람 포팅 비교 측정(지시가 있을 때)
+
+사람 포팅은 tt-metal-e2 `models/tt_transformers`(`DecodersPrecision.performance`)다. autoport와 같은 장치·같은 plugin 도구로 TTFT/TPS(batch 1, 6길이 × 3회, 출력 100 token)와 MMLU(1,368)를 재서 autoport Stage 6(`doc/benchmark/<후보>.json` `rows[].runs[2]`)과 비교한다.
+
+- **시작점:** 최신 작업 폴더 백업을 풀고 `setup.sh`처럼 sed로 경로·모델·revision·run-id·`AP_CAND`를 바꾼다.
+  - Qwen3 4B W8A8: `/home/bos/_backup/humanport_measurements_r050_qwen3_4b_w8a8_20261119_nocache.tgz`
+  - Llama 3B·8B: `humanport_measurements_r046_r048_20261115T1936_nocache.tgz`
+  - adapter `humanport_throughput.py`(`run_throughput --backend file:`)와 `mmlu_model/tt/generator.py`(`run_mmlu --backend generator`)는 046부터 그대로다. `mmlu_model/doc/model_contract.json`의 stop set만 모델 `generation_config.json` eos로 맞춘다.
+- **환경:**
+  - `python_env`(3.12)에 overlay(transformers 4.53.0, tokenizers 0.21.4, huggingface_hub 0.35.3)를 `PYTHONPATH` 맨 앞에 둔다. e2 in-tree `tt_transformers`가 transformers 4.53 기준이다.
+  - overlay는 백업에 없으니 `$PY -m pip install --no-deps --target <E>/py_overlay_tf453 …`로 만든다.
+  - 옛 `python_env_ttt`(3.10)는 없어졌고 e2 `_ttnn.so`는 3.12로 빌드돼 있다(050).
+  - host 확인(`host_check.py`) 결과 json의 `packages`로 overlay가 실제로 import되는지 본다.
+- **순서:**
+  1. host 확인(wrapper)
+  2. devcheck
+  3. 128 1회를 손으로 돌린다. log에서 W8A8 감지("quant_method=compressed-tensors"), INT8 weight cache(`*_ds_6bank_dtype_INT8`), 입력 token sha가 autoport와 같음을 확인한다.
+  4. `all_rest.sh`를 user unit으로 띄운다: 처리량 17회 → MMLU smoke → MMLU 전체 → 끝 devcheck → 요약.
+  - Qwen3 4B는 약 45분이다(처리량 6분, MMLU 35분). TT weight cache가 작업 폴더에 약 4.6 GB 생긴다.
+- **preflight:** 패턴은 `[r]un_bringup|[g]raph_controller|[r]un_device_command.py|[v]llm`처럼 괄호를 넣어, ssh 명령줄 자신을 잡지 않게 한다(049).
+- **다른 서버 autoport를 이 장치에서:** autoport backend는 checkout 안 `models.autoports.<slug>`로만 import한다. 그래서 순서대로 한다.
+  1. 이 서버 autoport의 sha256 목록을 쓰고 같은 파일시스템 안에서 옮긴다.
+  2. 다른 서버 autoport를 복사한다(`__pycache__`·Tracy 원자료 제외).
+  3. 그 Stage 6 명령 그대로 잰다.
+  4. 되돌린 뒤 목록과 대조한다.
+  - 자리를 바꾸기 전에 이 서버 autoport를 같은 수동 환경으로 한 번 재서 Stage 6 값과 맞는지 본다(050, sungmin `aviron-skills/rounds/050/조사/AI001_autoport_myA0_재측정_20261119.md`).
 
 ## 다른 모드(지시가 있을 때만)
 

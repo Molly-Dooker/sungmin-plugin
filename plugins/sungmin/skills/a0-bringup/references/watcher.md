@@ -53,7 +53,11 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
   - `<run>/usage.jsonl`: 모델 호출마다 한 줄, role은 `stage`·`subagent:<name>`·`review`다. 누적 token과 호출 수를 본다.
   - 모델 호출 상한: stage launch 하나에 3000회(stage 에이전트와 subagent 합)를 넘으면 그 시도가 `turn-failed`로 끝난다. 재개하면 그 launch의 수는 0부터 다시 센다.
   - unit log와 manifest `stage_N_turn_error`의 모델 API 오류.
-  - 비용 상한과 API 한도 대기는 러너에 없다. 얼마에서 멈출지는 정해지지 않았으니 run 전에 사용자에게 묻는다. 작업 폴더의 감시 script(`watch_run0NN.py`)가 deepagents run의 stage jsonl과 `usage.jsonl`을 읽는지는 확인되지 않았다(0.49.x codex run용이다). 첫 deepagents run에서 확인하고 필요하면 고친다.
+  - 비용 상한과 API 한도 대기는 러너에 없다.
+    - 상한은 run 전에 사용자에게 묻고, `costguard.sh`(이 plugin `scripts/`, [run.md](run.md) "감시 unit")로 지킨다. 알림 단계마다 `cost alert` 줄이 나오면 사용자에게 알린다.
+    - 050 run 2 실측: Qwen3 4B W8A8 b4 Stage 0~8에 약 66.47 USD, 모델 호출 2,759회. 리뷰(`gpt-6.2-astra`)가 60%, stage 30%, subagent 10%였다.
+    - stage launch 하나의 최대 호출은 Stage 7의 338회(stage 240 + subagent 98)로, 호출 상한 3000의 11%였다.
+  - `watch_run050.py`(050 작업 폴더)는 deepagents run의 manifest·wrapper·`usage.jsonl`을 읽는다(050 run 2에서 확인, `--usage-py`).
 - 정상 wrapper와 "아직 실행 중" 같은 진행 알림은 걸러 낸다. 감시는 만료되면(30분) 다시 건다.
 - 사용자에게는 의미 있는 사건만 짧게 보고한다. Stage complete(핵심 수치), 장치 정지, blocked, 결함 발견, run 종료가 여기에 해당한다.
 
