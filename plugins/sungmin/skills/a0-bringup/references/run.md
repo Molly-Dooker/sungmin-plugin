@@ -40,14 +40,19 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 | | `deepagents` | `codex` |
 |---|---|---|
-| stage 에이전트 | Deep Agents 에이전트가 OpenAI 모델 API를 직접 부른다. skill pin, todo, 읽기 전용 subagent(`investigator`·`comparer`·`general-purpose`) | Codex app-server goal(stage마다 thread 하나, remediation goal) |
-| 실제 launch에 필요한 것 | 러너 환경의 `OPENAI_API_KEY`(dry-run은 필요 없음) | `CODEX_BIN`(`codex-cli 0.169.1`만), plugin이 설치되고 로그인된 Codex home(`AVIRON_BRINGUP_CODEX_HOME`) |
-| manifest | `runner=deepagents`, `model_api=openai`, `deepagents_version` 등 package 버전, graph `a0-graph-3`. `<run>/usage.jsonl` | `runner=codex`, `codex_home`·`codex_bin`·`codex_version`·`approval_policy`·`sandbox`·`installed_skills`, graph `a0-graph-2` |
+| stage 에이전트 | Deep Agents 에이전트가 모델 API(OpenAI, 또는 `claude-…` 모델이면 Anthropic)를 직접 부른다. skill pin, todo, 읽기 전용 subagent(`investigator`·`comparer`·`general-purpose`) | Codex app-server goal(stage마다 thread 하나, remediation goal) |
+| 실제 launch에 필요한 것 | 러너 환경의 모델 API key: `OPENAI_API_KEY`, Claude 모델이면 `ANTHROPIC_API_KEY`(dry-run은 필요 없음) | `CODEX_BIN`(`codex-cli 0.169.1`만), plugin이 설치되고 로그인된 Codex home(`AVIRON_BRINGUP_CODEX_HOME`) |
+| manifest | `runner=deepagents`, `model_api=openai`(Claude 모델이면 `anthropic`과 `langchain_anthropic_version`), `deepagents_version` 등 package 버전, graph `a0-graph-3`. `<run>/usage.jsonl` | `runner=codex`, `codex_home`·`codex_bin`·`codex_version`·`approval_policy`·`sandbox`·`installed_skills`, graph `a0-graph-2` |
 | critical check 실패 | 같은 대화로 되돌린다(`--check-retries`, 기본 1) | remediation goal |
 | 러너가 스스로 하는 것 | 모델 API 오류를 backoff로 재시도. stage launch 하나에 모델 호출 3000회(subagent 포함)면 `turn-failed`. usage limit 대기·checker 수정 없음 | usage limit 대기(30분마다, stage당 96회), 일시적 turn 오류 대기, host 실패 뒤 1회 재개, checker 수정 |
 
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
 - 모델 설정은 두 러너 모두 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
+- **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다.
+  - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=high`가 된다. effort 값은 `low|medium|high|xhigh|max`다. subagent와 요약은 stage 모델·effort를 쓴다.
+  - key는 `ANTHROPIC_API_KEY`다(두 모델이 서로 다른 API면 key 둘 다). workspace에 묶이지 않은 key면 `ANTHROPIC_WORKSPACE_ID`도 준다(러너가 header로 보낸다; 실제 API로 확인한 적 없음).
+  - 아래 절의 `OPENAI_API_KEY`(시작 전 확인, `launch-unit.sh`의 `import-environment`·`unset-environment`, `key.sh`, 재개)는 Anthropic run에서 `ANTHROPIC_API_KEY`로 바꿔 읽는다.
+  - 11-19 myA0에서 장치 없이 실제 호출로만 확인했다(Deep Agents + Sonnet 5.5·Opus 5.5, 러너 리뷰어 경로). Anthropic 모델로 돈 stage run은 아직 없다(sungmin `aviron-skills/rounds/051/조사/anthropic_deepagents_20261119.md`).
 - run graph, stage check, 장치 wrapper, 리뷰 기록, skill, stage prompt는 두 러너가 함께 쓴다. 아래 절에서 러너 표시가 없는 것은 둘 다에 해당한다.
 - 0.50.0은 050차 두 run(myA0 codex, AI001 deepagents, Qwen3 4B W8A8 b4)이 `serving-complete`로 확인했다(sungmin `aviron-skills/rounds/050/README.md`). 0.51.0(러너 코드 분리, deepagents checkpoint, 요약 뒤 skill pin, skills 세부의 `references/` 이동)은 host 시험과 dry-run만 거쳤고 실제 run이 없다(sungmin `aviron-skills/rounds/051/README.md`).
 
@@ -108,12 +113,14 @@ export AVIRON_BRINGUP_RUNNER=<deepagents|codex>   # no default: a launch without
 export AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 unset CODEX_MODEL CODEX_EFFORT                    # the codex runner would read these before AGENT_*
 export AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra REVIEW_EFFORT=medium   # defaults
+# deepagents on Anthropic models instead (the three others are then the defaults):
+# export AGENT_MODEL=claude-sonnet-5-5 AGENT_EFFORT=medium REVIEW_MODEL=claude-opus-5-5 REVIEW_EFFORT=high
 # codex runner only:
 export CODEX_HOME=<CODEX_HOME>
 export AVIRON_BRINGUP_CODEX_HOME=$CODEX_HOME
 export CODEX_BIN=<CODEX_BIN>
 export AVIRON_BRINGUP_AUTO_CHECKER_FIX=off
-# deepagents runner only: OPENAI_API_KEY comes from the calling shell (never written into this file, a command line or a log)
+# deepagents runner only: OPENAI_API_KEY (Claude models: ANTHROPIC_API_KEY) comes from the calling shell (never written into this file, a command line or a log)
 export HF_MODEL=<org/model> MODEL_DIR=models/autoports/<model_dir>
 export DEV=/dev/bos/0                             # devcheck.sh, diskguard.sh, costguard.sh read it
 # server with several devices (AI001): the run uses one; wrappers and checks inherit it
@@ -163,7 +170,7 @@ echo "$AVIRON_BRINGUP_RUNNER"                                  # deepagents 또�
 $CODEX_BIN --version                                           # codex-cli 0.169.1
 CODEX_HOME=$CODEX_HOME $CODEX_BIN login status
 # deepagents 러너
-test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력하지 않는다
+test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력하지 않는다. Claude 모델이면 ANTHROPIC_API_KEY
 ```
 
 - **W8A8 e2 op:** skills 0.49.1부터 참조(pin `d92e67f`)는 W8A8 activation을 `ttnn.bos_quantize_fused`로 양자화한다. 이 op이 없는 e2(`f3348a2aac` 앞, 예: `629307f1bc`)에서는 Stage 1에서 멈출 것이므로, 오류가 나면 run 전에 e2를 `develop` 최신으로 올려 Release로 다시 빌드한다. 러너는 이것을 보지 않는다(049 D3 사용자 결정, sungmin `aviron-skills/rounds/049/1_개선안.md`).
@@ -189,7 +196,7 @@ grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_versio
 
 볼 값은 다음과 같다.
 
-- `runner=`가 고른 러너다. deepagents면 `model_api=openai`와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version=codex-cli 0.169.1`, graph `a0-graph-2`가 있다.
+- `runner=`가 고른 러너다. deepagents면 `model_api=openai`(Claude 모델이면 `model_api=anthropic`, `model=claude-sonnet-5-5`, `review_model=claude-opus-5-5`, `review_effort=high`)와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version=codex-cli 0.169.1`, graph `a0-graph-2`가 있다.
 - `plugin_mode=clone`, `plugin_version`·`plugin_revision`이 실행 clone(tag), `reference_commit`이 skills pin과 같고 `reference_source_hash`가 있다.
 - `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`가 지시한 batch, `device_stop_verifier=all`.
 - `launch_note` 줄이 없다.
@@ -276,7 +283,8 @@ run마다 세 개를 띄운다(run 감시, 디스크 보호, 그리고 codex는 
   - 알림 단계(기본 25·50·100·200)마다 한 번 `events.log`에 `cost alert` 줄을 쓴다.
   - 상한에 닿으면 아래 "멈추기" 1·2·4를 한다. 아무것도 지우지 않는다.
   - 상한은 run 전에 사용자에게 묻는다(050 run 2: 300 USD, 실제 약 66.47 USD).
-  - 단가는 `usage.py`의 `PRICE`이고, 모델이나 가격표가 바뀌면 고친다.
+  - 단가는 `usage.py`의 `PRICE`이고, 모델이나 가격표가 바뀌면 고친다. Sonnet 5.5·Opus 5.5 가격이 들어 있고(2026-11-03 표), Anthropic의 cache write(`usage.jsonl`의 `cache_write`)는 입력가의 1.25배로 센다.
+  - Anthropic cache는 5분 뒤 사라진다. 장치 명령이 길면 `cache_write`가 커지므로 첫 Anthropic run에서 `cached`·`cache_write` 비율을 본다.
   - `watch_run050.py`의 `--cost-alerts`와 알림이 겹치므로, 둘 중 하나만 켠다. 감시 script 쪽을 끄려면 `--cost-alerts ""`로 띄운다.
   ```bash
   systemd-run --user --unit=costguard-r0NN-<model> -p StandardOutput=append:<work>/costguard.out -p StandardError=append:<work>/costguard.out \
@@ -367,7 +375,7 @@ grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rol
 
 `unauthorized`면 `CODEX_HOME=$CODEX_HOME $CODEX_BIN login`으로 다시 로그인하고 같은 세션을 이어 간다.
 
-**deepagents 러너:** 인증은 `OPENAI_API_KEY` 하나다. 로그인 상태나 Codex home이 없다. key가 없으면 실제 launch가 시작 전에 거부된다. run 중 API 오류는 러너가 backoff로 재시도하고, 이어지면 `turn-failed`(exit 5)로 끝나며 오류 문장이 manifest `stage_N_turn_error`와 unit log에 남는다. 그것을 읽고 key·계정 문제면 셸의 key를 바로잡은 뒤 `resume.sh`로 같은 thread를 잇는다. key가 틀렸거나 계정 한도·잔액이 모자랄 때 어떤 오류로 나타나는지, 한도에 걸렸을 때 기다릴지 멈출지는 아직 정해지지 않았다(run 기록 없음, 러너에 한도 대기가 없음).
+**deepagents 러너:** 인증은 모델 API key 하나다(`OPENAI_API_KEY`, Claude 모델이면 `ANTHROPIC_API_KEY`). 로그인 상태나 Codex home이 없다. key가 없으면 실제 launch가 시작 전에 거부된다. run 중 API 오류는 러너가 backoff로 재시도하고, 이어지면 `turn-failed`(exit 5)로 끝나며 오류 문장이 manifest `stage_N_turn_error`와 unit log에 남는다. 그것을 읽고 key·계정 문제면 셸의 key를 바로잡은 뒤 `resume.sh`로 같은 thread를 잇는다. key가 틀렸거나 계정 한도·잔액이 모자랄 때 어떤 오류로 나타나는지, 한도에 걸렸을 때 기다릴지 멈출지는 아직 정해지지 않았다(run 기록 없음, 러너에 한도 대기가 없음).
 
 ## 연속 run 후보와 serving stack
 
