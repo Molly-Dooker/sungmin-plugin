@@ -28,7 +28,8 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 - report run은 0~6이고, Stage 6 뒤 사용자 선택을 기다린다(`await_selection` 인터럽트).
 - 연속 run은 `--serving-after benchmark-candidates`면 Stage 6 보고 뒤 러너가 후보를 골라 7 → 8을 이어 간다. `--serving-after optimized-full-model`이면 Stage 6을 건너뛰고, 품질이 `not-measured`다. `--serving-after`는 이 두 이름만 받고 숫자는 거부한다(0.47의 `5`가 지금의 benchmark-candidates다).
-- 러너 프로세스는 두 러너 모두 LangGraph run graph(`graph_controller.py`; stage subgraph만 러너마다 다르다)이고, checkpoint는 `<run>/graph/checkpoint.sqlite`다. 상태의 원천은 `<run>/manifest.txt`다.
+- 러너 프로세스는 두 러너 모두 LangGraph run graph(`graph_controller.py`; stage subgraph만 러너마다 다르다. 0.51.0부터 러너별 코드는 `scripts/runners/codex/`·`scripts/runners/deepagents/`)이고, checkpoint는 `<run>/graph/checkpoint.sqlite`다. 상태의 원천은 `<run>/manifest.txt`다.
+  - deepagents checkpoint는 0.51.0부터 stage thread만 저장한다(리뷰어·subagent는 저장하지 않는다). 0.50.0 run 2는 이 파일이 1.7 GB였고 88%가 리뷰어·subagent 몫이었다(sungmin `aviron-skills/rounds/051/조사/checkpoint_크기_분석_20261119.md`).
 - Stage 7·8(serving)은 greedy만 받는다(temperature 0의 `top_k`·`top_p`·`min_p`는 greedy로 받는다).
 - batch는 capacity 1 또는 4다(`--max-batch 1|4`). decode는 capacity 행으로 돌고 비활성 행은 −1이다. 규칙은 플러그인 `skills/model-bringup/references/batch_contract.md`에 있다.
 - 새 run은 플러그인 revision 하나만 쓴다. 이전 revision 산출물은 그 revision의 checker로 판정하고, 새 run이 읽거나 재개하지 않는다.
@@ -48,13 +49,13 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
 - 모델 설정은 두 러너 모두 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
 - run graph, stage check, 장치 wrapper, 리뷰 기록, skill, stage prompt는 두 러너가 함께 쓴다. 아래 절에서 러너 표시가 없는 것은 둘 다에 해당한다.
-- 0.50.0 tree로는 어느 러너도 실제 run으로 확인되지 않았다(sungmin `aviron-skills/rounds/050/README.md`). 이 문서의 deepagents 쪽 절차는 operator.md와 러너 코드에서 옮긴 것이고 run으로 돌려 본 것이 아니다.
+- 0.50.0은 050차 두 run(myA0 codex, AI001 deepagents, Qwen3 4B W8A8 b4)이 `serving-complete`로 확인했다(sungmin `aviron-skills/rounds/050/README.md`). 0.51.0(러너 코드 분리, deepagents checkpoint, 요약 뒤 skill pin, skills 세부의 `references/` 이동)은 host 시험과 dry-run만 거쳤고 실제 run이 없다(sungmin `aviron-skills/rounds/051/README.md`).
 
 ## 규칙
 
-- **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, 0.49.x run → `v0.49.4`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
+- **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, 0.49.x run → `v0.49.4`, 0.50.x run → `v0.50.0`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
 - **참조 설치:** `python_env`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.x는 `d92e67f`, 0.48.x는 `6054718`.
-- **Codex 버전(codex 러너):** 러너가 Codex CLI 0.169.1만 받는다(`agent_backend.CODEX_VERSION`, dry-run도 확인). 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
+- **Codex 버전(codex 러너):** 러너가 Codex CLI 0.169.1만 받는다(0.51.0부터 `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`, 0.50.0은 `scripts/agent_backend.py`; dry-run도 확인). 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
 - **자동 checker 수정(codex 러너):** 끈다(`AVIRON_BRINGUP_AUTO_CHECKER_FIX=off`). checker 결함은 watcher가 run 밖에서 고친다. deepagents 러너에는 이 기능이 없다.
@@ -80,7 +81,7 @@ $REPO/aviron-skills      execution clone: develop (runner chosen per launch: dee
 - **`env_set.sh`:** venv 경로를 꼭 둘째 인자로 넘긴다(`source $CHECKOUT/env_set.sh bos $REPO/python_env`). 인자가 없으면 `$CHECKOUT/python_env`를 찾는데, 그 3.10 환경은 11-18에 지웠다(활성화 없이 지나간다).
 - **uv:** `uv venv --seed`로 만든다(pip가 있어야 한다: `ensure_tools.py`, `prepare_references.py`가 `python -m pip`를 쓴다). Python은 `~/.local/share/uv/python/` 아래 uv 설치본이고, venv는 minor symlink(`cpython-3.12-…`)를 가리킨다. uv로 3.12 patch를 올리면 venv의 interpreter도 바뀌므로, 재현성을 따질 때는 `$PY -V`를 기록한다. `~/.local/share/uv/python/`을 지우면 환경이 깨진다.
 - **pin:** `pyarrow==25.0.1`(26은 NumPy 2를 요구해 lm_eval import가 깨진다). 러너 package는 `requirements-da.txt` 하나다(Deep Agents, LangChain, LangGraph; launch 때 설치하지 않는다). 두 러너 모두 launch마다 설치된 버전을 pin과 대조해 다르면 시작을 거부한다(deepagents는 deepagents·langchain·langchain-openai·langgraph, codex는 LangGraph 쪽 package).
-- **Codex:** `$CODEX_BIN`(`~/.local/bin/codex`)은 `codex update`로 올린다. 설치기가 `~/.bashrc` 끝에 PATH 줄을 더할 수 있다. 버전을 올리면 skills `agent_backend.CODEX_VERSION`과 맞아야 codex 러너가 시작한다.
+- **Codex:** `$CODEX_BIN`(`~/.local/bin/codex`)은 `codex update`로 올린다. 설치기가 `~/.bashrc` 끝에 PATH 줄을 더할 수 있다. 버전을 올리면 skills `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`과 맞아야 codex 러너가 시작한다.
 
 ## 준비 값
 
@@ -300,7 +301,7 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 ```
 
 - stage 진행은 `<run>/<NN>-<stage>.jsonl`(재개면 `.resume-N.jsonl`)과 autoport `doc/<stage>/work_log.md`에서 본다. 러너 event는 `<run>/graph/events.jsonl`이다.
-- deepagents: 모델 호출마다 token 사용량이 `<run>/usage.jsonl`에 role(`stage`, `subagent:<name>`, `review`)과 함께 쌓인다. Deep Agents 자체 파일은 `<run>/agent/`다.
+- deepagents: 모델 호출마다 token 사용량이 `<run>/usage.jsonl`에 role(`stage`, `subagent:<name>`, `review`)과 함께 쌓인다. 0.51.0부터 `status`가 `completed`가 아닌 줄에는 `detail`(response id, `incomplete_details` 전체, service tier, content block 종류, tool call 수)이 붙는다. Deep Agents 자체 파일은 `<run>/agent/`다.
 - wrapper 기록은 `<run>/wrappers/*.json`이다. 판독표는 [watcher.md](watcher.md) "감시"에 있다.
 
 ## 재개
