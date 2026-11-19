@@ -188,9 +188,14 @@ test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력�
 
 장치, 모델 API 호출, Codex turn 없이 prompt, manifest, tooling을 확인한다(deepagents는 key 없이 돈다. codex는 `CODEX_BIN` 버전을 확인한다). 새 run 폴더가 생기고, 확인 뒤 지운다. 러너를 둘 다 쓸 서버면 러너마다 한 번씩 돌린다.
 
+지울 폴더는 dry-run이 rc 0으로 끝났고, 앞뒤 폴더 목록을 비교해 새로 생긴 것이 정확히 하나일 때 그 폴더뿐이다. rc가 0이 아니면 지울 것이 없다. "가장 새 폴더"(`ls -td … | head -1`)를 지우지 않는다: 051 run 1(11-19 14:39)에서 dry-run이 rc 2로 폴더를 만들지 않아, 돌고 있던 run 폴더가 지워졌다.
+
 ```bash
-./start.sh --dry-run
-R=$(ls -td $CHECKOUT/bringup/artifacts/multigoal-runs/*/ | head -1)
+RUNS=$CHECKOUT/bringup/artifacts/multigoal-runs
+ls $RUNS > runs_before.txt   # 작업 폴더에서
+./start.sh --dry-run; echo rc=$?
+NEW=$(comm -13 runs_before.txt <(ls $RUNS)); echo "new=$NEW"   # rc 0이고 정확히 한 줄일 때만 R로 쓴다
+R=$RUNS/$NEW
 grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_version|graph_schema_version|plugin_mode|plugin_version|plugin_revision|reference_commit|reference_source_hash|batch_scope_operator|serving_after|stop_after_stage|device_stop_verifier|launch_note|tooling_status|serving_candidate_preview|stage_[0-8]_dry_run)" $R/manifest.txt
 ```
 
@@ -203,6 +208,8 @@ grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_versio
 - `tooling_status`에서 device_profiler·perf_report가 available이다.
 - `stage_0_dry_run`~`stage_8_dry_run=true`.
 - `serving_candidate_preview`는 새 run이면 Stage 5 기록이 없어 `unavailable:<경로>`다(정상).
+
+확인이 끝나면 위 조건(rc 0, 새 폴더 정확히 하나, 그 manifest에 `stage_0_dry_run=true`)을 다시 보고 `rm -rf "$R"` 한 뒤, `ls $RUNS`가 `runs_before.txt`와 같은지 본다.
 
 ## 시작
 
