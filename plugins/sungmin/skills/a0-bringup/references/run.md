@@ -49,7 +49,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
 - 모델 설정은 두 러너 모두 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
 - **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다. Claude stage 모델이면 대화 요약만 `claude-haiku-5-5`가 쓴다(skills 051-12; `usage.jsonl`의 `model`로 보이고 `usage.py`에 단가가 있다). OpenAI는 stage 모델이 요약한다.
-  - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=high`가 된다. effort 값은 `low|medium|high|xhigh|max`다. subagent와 요약은 stage 모델·effort를 쓴다.
+  - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=medium`이 된다(skills `124fc73`부터, 051-15 사용자 결정; 그 앞 0.51.0 tree는 `high`). effort 값은 `low|medium|high|xhigh|max`다. subagent는 stage 모델·effort를 쓰고, 요약은 Claude stage 모델이면 `claude-haiku-5-5`가 stage effort로 쓴다. 재개는 run에 기록된 effort를 이어받는다.
   - key는 `ANTHROPIC_API_KEY`다(두 모델이 서로 다른 API면 key 둘 다). workspace에 묶이지 않은 key면 `ANTHROPIC_WORKSPACE_ID`도 준다(러너가 header로 보낸다; 실제 API로 확인한 적 없음).
   - 아래 절의 `OPENAI_API_KEY`(시작 전 확인, `launch-unit.sh`의 `import-environment`·`unset-environment`, `key.sh`, 재개)는 Anthropic run에서 `ANTHROPIC_API_KEY`로 바꿔 읽는다.
   - 11-19 myA0에서 장치 없이 실제 호출로만 확인했다(Deep Agents + Sonnet 5.5·Opus 5.5, 러너 리뷰어 경로). Anthropic 모델로 돈 stage run은 아직 없다(sungmin `aviron-skills/rounds/051/조사/anthropic_deepagents_20261119.md`).
@@ -61,6 +61,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 - **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, 0.49.x run → `v0.49.4`, 0.50.x run → `v0.50.0`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
 - **참조 설치:** `python_env`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.x는 `d92e67f`, 0.48.x는 `6054718`.
 - **Codex 버전(codex 러너):** 러너가 Codex CLI 0.169.1만 받는다(0.51.0부터 `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`, 0.50.0은 `scripts/agent_backend.py`; dry-run도 확인). 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
+- **run 중 시험:** run이 도는 서버에서 skills plugin `tests/` 전체를 돌리지 않는다. `tests/test_device_command.py`의 wrapper가 run과 같은 host 잠금(`host_exclusion`)을 잡아, run의 장치 명령이 exit 125(`external-host-work`)로 거절되거나 시험이 실패한다(051 run 3 중 사본 시험에서 35 failed). 사본에서도 같다. 장치 wrapper를 쓰지 않는 시험 파일만 돌리거나 run이 끝난 뒤 돌린다. subagent에 시험을 맡길 때도 이렇게 적는다.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
 - **자동 checker 수정(codex 러너):** 끈다(`AVIRON_BRINGUP_AUTO_CHECKER_FIX=off`). checker 결함은 watcher가 run 밖에서 고친다. deepagents 러너에는 이 기능이 없다.
@@ -114,7 +115,7 @@ export AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLI
 unset CODEX_MODEL CODEX_EFFORT                    # the codex runner would read these before AGENT_*
 export AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra REVIEW_EFFORT=medium   # defaults
 # deepagents on Anthropic models instead (the three others are then the defaults):
-# export AGENT_MODEL=claude-sonnet-5-5 AGENT_EFFORT=medium REVIEW_MODEL=claude-opus-5-5 REVIEW_EFFORT=high
+# export AGENT_MODEL=claude-sonnet-5-5 AGENT_EFFORT=medium REVIEW_MODEL=claude-opus-5-5 REVIEW_EFFORT=medium
 # codex runner only:
 export CODEX_HOME=<CODEX_HOME>
 export AVIRON_BRINGUP_CODEX_HOME=$CODEX_HOME
@@ -201,7 +202,7 @@ grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_versio
 
 볼 값은 다음과 같다.
 
-- `runner=`가 고른 러너다. deepagents면 `model_api=openai`(Claude 모델이면 `model_api=anthropic`, `model=claude-sonnet-5-5`, `review_model=claude-opus-5-5`, `review_effort=high`)와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version=codex-cli 0.169.1`, graph `a0-graph-2`가 있다.
+- `runner=`가 고른 러너다. deepagents면 `model_api=openai`(Claude 모델이면 `model_api=anthropic`, `model=claude-sonnet-5-5`, `review_model=claude-opus-5-5`, `review_effort=medium`)와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version=codex-cli 0.169.1`, graph `a0-graph-2`가 있다.
 - `plugin_mode=clone`, `plugin_version`·`plugin_revision`이 실행 clone(tag), `reference_commit`이 skills pin과 같고 `reference_source_hash`가 있다.
 - `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`가 지시한 batch, `device_stop_verifier=all`.
 - `launch_note` 줄이 없다.
@@ -356,7 +357,7 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 
 - 위 1~5는 두 러너가 같다. 장치 명령은 어느 러너든 러너가 `device_command` tool로 공용 wrapper를 띄우고, 정지 신호(unit stop의 SIGTERM)를 받으면 진행 중인 wrapper를 drain한다.
 - **codex 러너:** 에이전트만 멈춰 새 명령이 나오지 않게 하려면 run의 app-server를 얼릴 수 있다(`kill -STOP <app-server-pid>`, operator.md "Stop"). PID는 `ps`로 그 run의 것임을 확인한다.
-- **deepagents 러너:** 에이전트는 러너 프로세스 안에서 돈다. 에이전트만 얼리는 절차는 operator.md에 없다(정해지지 않음). codex의 `kill -STOP`을 러너 프로세스에 옮겨 쓰지 않는다. 위 1~5 그대로 멈춘다. 운영자 정지는 돌고 있는 subagent도 다음 모델 호출 전에 끝낸다. deepagents run에서 이 절차를 실제로 해 본 기록은 아직 없다.
+- **deepagents 러너:** 에이전트는 러너 프로세스 안에서 돈다. 에이전트만 얼리는 절차는 operator.md에 없다(정해지지 않음). codex의 `kill -STOP`을 러너 프로세스에 옮겨 쓰지 않는다. 위 1~5 그대로 멈춘다. 운영자 정지는 돌고 있는 subagent도 다음 모델 호출 전에 끝낸다. 그러나 이미 시작한 리뷰는 판정까지 돈다(리뷰어에 정지 확인이 없음, 051 문제 8, 고치기 전까지). 051 run 3(11-19 23:09)에서 이 절차로 멈췄을 때 unit stop 뒤 리뷰가 8분, 54호출 3.96 USD를 더 쓰고 끝났다. 장치 위험은 없으니 기다린다.
 
 하지 않는 것:
 
