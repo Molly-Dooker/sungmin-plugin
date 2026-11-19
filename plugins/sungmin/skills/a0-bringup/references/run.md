@@ -48,7 +48,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
 - 모델 설정은 두 러너 모두 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
-- **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다.
+- **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다. Claude stage 모델이면 대화 요약만 `claude-haiku-5-5`가 쓴다(skills 051-12; `usage.jsonl`의 `model`로 보이고 `usage.py`에 단가가 있다). OpenAI는 stage 모델이 요약한다.
   - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=high`가 된다. effort 값은 `low|medium|high|xhigh|max`다. subagent와 요약은 stage 모델·effort를 쓴다.
   - key는 `ANTHROPIC_API_KEY`다(두 모델이 서로 다른 API면 key 둘 다). workspace에 묶이지 않은 key면 `ANTHROPIC_WORKSPACE_ID`도 준다(러너가 header로 보낸다; 실제 API로 확인한 적 없음).
   - 아래 절의 `OPENAI_API_KEY`(시작 전 확인, `launch-unit.sh`의 `import-environment`·`unset-environment`, `key.sh`, 재개)는 Anthropic run에서 `ANTHROPIC_API_KEY`로 바꿔 읽는다.

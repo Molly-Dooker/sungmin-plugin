@@ -8,7 +8,10 @@ claude-api skill): `input` holds cache reads and cache writes; a write (row fiel
 commit on) costs 1.25x input (5-minute cache, the only one the runner asks for)."""
 import json, sys, collections
 PRICE = {"gpt-6.2-sol": (2.00, 0.10, 10.00), "gpt-6.2-astra": (8.00, 0.40, 40.00),  # USD per 1M: input, cached input, output
-         "claude-sonnet-5-5": (2.00, 0.10, 10.00), "claude-opus-5-5": (4.00, 0.20, 20.00)}
+         "claude-sonnet-5-5": (2.00, 0.10, 10.00), "claude-opus-5-5": (4.00, 0.20, 20.00),
+         # shortcut: Haiku 5.5 is 0.10/0.50 up to 100K input and 0.50/2.50 above; it writes the Claude summaries
+         # (skills 051-12), whose input is always above 100K, so only the upper rate is kept (cache read assumed 0.1x)
+         "claude-haiku-5-5": (0.50, 0.05, 2.50)}
 
 
 def cost(model, inp, cached, out, write=0):
