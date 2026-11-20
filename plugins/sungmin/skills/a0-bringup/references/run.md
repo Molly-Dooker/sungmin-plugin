@@ -362,12 +362,12 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 하지 않는 것:
 
 - 넓은 `pkill -f`를 쓰지 않는다.
-- 장치를 연 프로세스를 강제로 죽이지 않는다. FLR, PCI remove/rescan, `tt-smi` reset을 하지 않는다. FW init이 실패하면 장치 작업을 멈추고 재부팅한다(사용자 확인).
+- 장치를 연 프로세스를 강제로 죽이지 않는다. FLR, PCI remove/rescan, `tt-smi` reset을 하지 않는다. FW init이 실패하면 장치 작업을 멈추고 재부팅한다(사용자 확인). myA0는 [power.md](power.md) 절차(보드 전원 껐다 켜기 뒤 재부팅)로 한다.
 
 wrapper가 `stop-device-work`(exit 126, 기한 종료 포함)로 끝났거나 wrapper 기록에 exit가 없으면(러너가 먼저 죽음):
 
 - 장치를 다시 열지 않는다(`verify_device.py` 포함). hang 장치를 다시 열면 PCIe 이탈이 난다(026차 조사).
-- 명령 log 끝에 mesh close가 있고 holder가 없을 때만, 사용자 승인 뒤 wrapper로 verifier를 1회 돌린다. 그 밖에는 재부팅한다.
+- 명령 log 끝에 mesh close가 있고 holder가 없을 때만, 사용자 승인 뒤 wrapper로 verifier를 1회 돌린다. 그 밖에는 재부팅한다(myA0는 [power.md](power.md)).
 - verifier가 통과했거나 재부팅한 뒤에는 `resume-with.sh <run> '{"decision":"verified-resume","note":"<누구, 언제, verifier 통과 또는 재부팅>"}'`로 같은 run을 재개한다. 러너가 blocking 기록마다 `wrappers/<registration>.ack`에 note를 적고 drain한 뒤 같은 stage thread를 잇는다. `.ack`를 손으로 쓰고 `resume.sh`로 띄우면 거부된다.
 - 인터럽트 없이 launch drain에서 막힌 경우(러너가 장치 명령 중에 죽음, `stop_reason=wrapper-drain-at-launch`)만 `.ack`(이유·누구·언제 한 줄)를 손으로 두고 `resume.sh`로 재개한다. drain은 ack된 기록을 해결로 치고 원래 기록은 그대로 둔다. registry를 옮기거나 새 run을 띄우지 않는다.
 - `continue-stage`로 끝난 명령 실패는 drain을 막지 않는다.
