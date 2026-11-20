@@ -52,5 +52,5 @@ run 실행·감시·skills 변경에 모두 적용한다.
 - **run 중 실행 clone 고정:** run이 도는 동안에는 실행 clone을 고치거나 origin에서 `git pull`하지 않는다. 러너가 stage check마다 plugin tree를 시작 때와 비교해, 다르면 check 없이 멈춘다(`plugin-modified`). 재현은 실행 clone 밖의 임시 사본에서 한다.
 - **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다.
 - **운영자 메모:** `LAUNCH_NOTE`는 사용자가 지시하거나 허락할 때만 쓴다(300차 사용자 지시). 한 번 넣으면 그 뒤 모든 stage와 재개 objective에 붙고, 뗄 방법이 없다.
-- **산출물:** 기존 산출물은 지우지 않고 `$BACKUP`에 압축해 둔다. 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.
+- **산출물:** 기존 산출물은 `$BACKUP`에 불투명 이름(`a0bk_<시각>_<순번>.tgz`)으로 압축해 둔다. 끝난 run의 autoport는 측정 원자료(Tracy·profile CSV·텐서)를 빼고 압축·대조한 뒤 원본을 지운다([references/run.md](references/run.md) "산출물 백업"). 그 밖의 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.
 - **commit 메시지:** skills commit은 영어로 `aviron-model-bringup <version>: …` 형식을 쓴다.

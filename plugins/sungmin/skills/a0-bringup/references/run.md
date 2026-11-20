@@ -183,7 +183,7 @@ test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력�
   - `fuser`는 다른 사용자의 holder를 보지 못하므로 `/sys/module/bos/refcnt`(`lsmod` 셋째 칸)가 0인지도 본다.
   - `devcheck.sh`·`start_unit.sh`는 refcnt가 0이 아니면 시작하지 않는다(050 run 2 작업 폴더).
   - 장치가 둘 이상인 서버는 `launch.env`에 `TT_VISIBLE_DEVICES`를 두어 run이 쓸 장치 하나만 보이게 한다. AI001은 `/dev/bos/0`(`01:00.0`, Gen4 x4)만 쓴다. `/dev/bos/1`은 x1 링크이고 다른 사용자가 쓴다.
-- **autoport:** 이전 run의 autoport가 남아 있으면, 접거나 취소한 run이면 지운다. 결과가 있는 run이면 아래 "산출물 백업"대로 압축·대조한 뒤 지운다.
+- **autoport:** 이전 run의 autoport가 남아 있으면, 접거나 취소한 run이면 지운다. 결과가 있는 run이면 아래 "산출물 백업"대로 측정 원자료를 빼고 압축·대조한 뒤 지운다.
 
 ## dry-run
 
@@ -398,25 +398,39 @@ grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rol
 
 ## 산출물 백업
 
-기존 산출물은 지우지 않고 `$BACKUP`에 압축해 둔다. `bringup/`과 `models/autoports/`는 사용자가 정한 경우에만, 압축을 대조한 뒤 지운다. `bringup/references/`는 다음 run이 읽으므로 남긴다.
+기존 산출물은 `$BACKUP`에 압축해 둔다. `bringup/references/`는 다음 run이 읽으므로 남긴다.
+
+**autoport(`models/autoports/<model_dir>`):** run이 끝나면(`serving-complete`나 사용자가 정한 종료) 아래 순서로 한다. 원본 폴더 삭제까지 이 절차에 포함된다(11-20 사용자 지시). 장치 명령이 돌거나 다른 run이 그 autoport를 쓰는 동안에는 하지 않는다.
+
+1. 측정 원자료는 백업하지 않고 버린다: Tracy 원자료(`*.tracy`), profile CSV(`profile_log_device.csv`, `tracy_ops_times.csv`), 텐서(`*.pt`, `*.tensorbin`: HF reference layer 출력·logits 등 다시 만들 수 있는 것), `__pycache__`.
+2. 나머지(code, `doc/`, json·log·md)를 불투명 이름 `a0bk_<YYYYMMDDTHHMM>_<순번>.tgz`로 `$BACKUP`에 압축하고, `tar -d`로 원본과 대조한다.
+3. 대조가 `identical`이고 holder·refcnt가 0이면 원본 폴더를 지운다. `models/autoports/`는 빈 폴더로 둔다.
+4. sungmin 차수 문서의 백업 이름 대조표(예: `aviron-skills/rounds/051/조사/백업이름변경_myA0_20261120.md`)에 이름·내용·크기를 한 줄 더하고, run 기록에 백업 경로·크기·삭제 시각을 적는다.
 
 ```bash
 cd $CHECKOUT
-B=$BACKUP/autoport_<model>_r0NN_$(date +%Y%m%dT%H%M)_nopt_notracy.tgz   # 텐서·Tracy 원자료·profile CSV 제외
+SEQ=$(ls $BACKUP | sed -n 's/^a0bk_[0-9T]*_\([0-9]*\)\.tgz$/\1/p' | sort -n | tail -1); SEQ=$(printf %02d $((10#${SEQ:-0}+1)))
+B=$BACKUP/a0bk_$(date +%Y%m%dT%H%M)_$SEQ.tgz; [ -e "$B" ] && exit 1
 tar -czf "$B" -C models --exclude='*.pt' --exclude='*.tensorbin' --exclude='*.tracy' --exclude=profile_log_device.csv \
   --exclude=tracy_ops_times.csv --exclude=__pycache__ autoports/<model_dir> && tar -dzf "$B" -C models && echo identical
+fuser /dev/bos/0; cat /sys/module/bos/refcnt          # 둘 다 비거나 0일 때만
+rm -rf models/autoports/<model_dir> && ls -la models/autoports
 ```
 
-- 전체 사본이 필요하면 `--exclude`를 빼고 같은 방식으로 만든다.
-- 다른 서버의 산출물은 그 서버에서 압축·대조한 뒤 백업 위치로 옮긴다. 백업 경로와 크기는 차수 run 기록에 적는다.
+- **이름:** 백업 이름에 모델·run·autoport 이름을 넣지 않는다. stage 에이전트가 같은 사용자로 돌아 `find … -iname "*<model>*"`로 이전 run 백업을 찾아 풀어 쓴 일이 있다(051 문제 9). 이름 대조는 sungmin 문서에만 두고 서버에는 두지 않는다.
+- 측정 원자료까지 필요하다고 사용자가 정하면, 버릴 파일만 따로 같은 방식(불투명 이름, `tar -d`)으로 압축한다(051 run 4 `.pt` 41개 `a0bk_20261120T1526_38.tgz`).
+- `bringup/artifacts/multigoal-runs/<run>/`(run 폴더)는 사용자가 정한 경우에만, 같은 방식으로 압축·대조한 뒤 지운다.
+- 다른 서버의 산출물은 그 서버에서 압축·대조한 뒤 백업 위치로 옮긴다.
 
 ## 사람 포팅 비교 측정(지시가 있을 때)
 
 사람 포팅은 tt-metal-e2 `models/tt_transformers`(`DecodersPrecision.performance`)다. autoport와 같은 장치·같은 plugin 도구로 TTFT/TPS(batch 1, 6길이 × 3회, 출력 100 token)와 MMLU(1,368)를 재서 autoport Stage 6(`doc/benchmark/<후보>.json` `rows[].runs[2]`)과 비교한다.
 
 - **시작점:** 최신 작업 폴더 백업을 풀고 `setup.sh`처럼 sed로 경로·모델·revision·run-id·`AP_CAND`를 바꾼다.
-  - Qwen3 4B W8A8: `/home/bos/_backup/humanport_measurements_r050_qwen3_4b_w8a8_20261119_nocache.tgz`
-  - Llama 3B·8B: `humanport_measurements_r046_r048_20261115T1936_nocache.tgz`
+  - Llama 3.1 8B W8A8(051, Python 3.12, e2 `3daa9ee902`): myA0 `/home/bos/_backup/a0bk_20261120T1449_37.tgz`
+  - Qwen3 4B W8A8(050): `a0bk_20261119T0850_22.tgz`
+  - Llama 3B·8B(046~048, Python 3.10): `a0bk_20261115T1936_14.tgz`
+  - 백업 이름은 불투명하다. 내용은 sungmin `aviron-skills/rounds/051/조사/백업이름변경_myA0_20261120.md`에서 찾는다. 다 쓴 작업 폴더도 TT weight cache(`tt_cache/`)를 빼고 같은 방식으로 압축·대조한 뒤 지운다.
   - adapter `humanport_throughput.py`(`run_throughput --backend file:`)와 `mmlu_model/tt/generator.py`(`run_mmlu --backend generator`)는 046부터 그대로다. `mmlu_model/doc/model_contract.json`의 stop set만 모델 `generation_config.json` eos로 맞춘다.
 - **환경:**
   - `python_env`(3.12)에 overlay(transformers 4.53.0, tokenizers 0.21.4, huggingface_hub 0.35.3)를 `PYTHONPATH` 맨 앞에 둔다. e2 in-tree `tt_transformers`가 transformers 4.53 기준이다.
