@@ -48,7 +48,7 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
   - wrapper registry의 상태 변화
   - 에이전트 메시지와 goal 상태
   - unit 상태
-- **codex 러너만:** 리셋권 감시 unit과 계정 사용량(주간 한도, 리셋권)을 본다([run.md](run.md) "감시 unit").
+- **codex 러너만:** 리셋권 감시 unit과 계정 사용량(주간 한도, 리셋권)을 본다([run.md](run.md) "감시 unit"). 0.52.0부터 runner log에 `WARNING: Codex compacted the conversation`이 보이면 그 stage는 붙인 skill과 읽은 reference가 대화에서 빠진 상태다(재첨부 없음, 052 결정 5). 멈추지 않고 시각·stage를 run 기록에 적고, stage가 끝난 뒤 그 stage 산출물과 리뷰를 따로 본다.
 - **deepagents 러너:** 계정 한도 감시 대신 아래를 본다.
   - `<run>/usage.jsonl`: 모델 호출마다 한 줄, role은 `stage`·`subagent:<name>`·`review`다. 누적 token과 호출 수를 본다.
   - 리뷰의 마지막 판정 호출이 `status=incomplete`(`incomplete=max_messages`)·`cached=0`·reasoning만으로 끝나고, 러너가 NO_VERDICT로 한 번 더 물어 판정을 받는 것은 알려진 흐름이다. 050 run 2에서 리뷰 23회 중 13회, 7.68 USD(run의 11.6%)였고 원인은 미확인이다. 멈출 일은 아니다. 횟수와 0.51.0의 `detail` 내용을 run 기록에 모아 둔다(sungmin `aviron-skills/rounds/051/조사/prompt_cache_비율_20261119.md`). 같은 리뷰에서 NO_VERDICT 뒤에도 판정이 없으면 리뷰 오류(`ended without a verdict`)다.
