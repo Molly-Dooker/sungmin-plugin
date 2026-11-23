@@ -36,18 +36,19 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 ## 러너 선택
 
-한 plugin tree가 두 러너를 모두 돌리고, launch마다 고른다: `run_bringup --runner deepagents|codex`나 `AVIRON_BRINGUP_RUNNER`. **기본값이 없다.** 빠지면 아무것도 시작하지 않고 exit 2다. 사용자가 러너를 말하지 않았으면 묻는다. 원본은 operator.md "Choose the runner"다.
+한 plugin tree가 여러 러너를 돌리고, launch마다 고른다: `run_bringup --runner deepagents|codex|claude`(`claude`는 0.54.0부터)나 `AVIRON_BRINGUP_RUNNER`. **기본값이 없다.** 빠지면 아무것도 시작하지 않고 exit 2다. 사용자가 러너를 말하지 않았으면 묻는다. 원본은 operator.md "Choose the runner"다.
 
 | | `deepagents` | `codex` |
 |---|---|---|
 | stage 에이전트 | Deep Agents 에이전트가 모델 API(OpenAI, 또는 `claude-…` 모델이면 Anthropic)를 직접 부른다. skill pin, todo, 읽기 전용 subagent(`investigator`·`comparer`·`general-purpose`) | Codex app-server goal(stage마다 thread 하나, remediation goal) |
-| 실제 launch에 필요한 것 | 러너 환경의 모델 API key: `OPENAI_API_KEY`, Claude 모델이면 `ANTHROPIC_API_KEY`(dry-run은 필요 없음) | `CODEX_BIN`(`codex-cli 0.169.1`만), plugin이 설치되고 로그인된 Codex home(`AVIRON_BRINGUP_CODEX_HOME`) |
+| 실제 launch에 필요한 것 | 러너 환경의 모델 API key: `OPENAI_API_KEY`, Claude 모델이면 `ANTHROPIC_API_KEY`(dry-run은 필요 없음) | `CODEX_BIN`(0.53.x는 `codex-cli 0.169.1`만, 0.54.0부터 설치된 버전), plugin이 설치되고 로그인된 Codex home(`AVIRON_BRINGUP_CODEX_HOME`) |
 | manifest | `runner=deepagents`, `model_api=openai`(Claude 모델이면 `anthropic`과 `langchain_anthropic_version`), `deepagents_version` 등 package 버전, graph `a0-graph-3`. `<run>/usage.jsonl` | `runner=codex`, `codex_home`·`codex_bin`·`codex_version`·`approval_policy`·`sandbox`·`installed_skills`, graph `a0-graph-2` |
 | critical check 실패 | 같은 대화로 되돌린다(`--check-retries`, 기본 1) | remediation goal |
 | 러너가 스스로 하는 것 | 모델 API 오류를 backoff로 재시도. stage launch 하나에 모델 호출 3000회(subagent 포함)면 `turn-failed`. usage limit 대기·checker 수정 없음 | usage limit 대기(30분마다, stage당 96회), 일시적 turn 오류 대기, host 실패 뒤 1회 재개, checker 수정 |
 
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
-- 모델 설정은 두 러너 모두 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
+- 모델 설정은 모든 러너가 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
+- **`claude` 러너(0.54.0, sungmin `aviron-skills/rounds/054/`):** stage 에이전트는 Claude Code CLI(`CLAUDE_BIN`; 비대화 ssh에는 `~/.local/bin`이 PATH에 없으니 `CLAUDE_BIN=$HOME/.local/bin/claude`를 준다)이고 `~/.claude`의 claude.ai 로그인을 쓴다(API key는 넘기지 않는다). 기본 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, effort `medium`, 요약 모델 없음(Claude Code 자체 compaction). 리뷰어도 Claude Code(`Read`·`Grep`·`Glob`만), stage 에이전트는 `RemoteTrigger`·`CronCreate`·`EnterWorktree` 금지. graph·도구·check·usage limit 대기는 codex 러너와 같다(`a0-graph-2`). manifest `runner=claude`, `claude_bin`·`claude_bin_target`·`claude_version`·`claude_auth`·`permission_mode`. 11-23 기준 dry-run과 장치 없는 짧은 시험만 했고 실제 run은 없다.
 - **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다. Claude stage 모델이면 대화 요약만 `claude-haiku-5-5`가 쓴다(skills 051-12; `usage.jsonl`의 `model`로 보이고 `usage.py`에 단가가 있다). OpenAI는 stage 모델이 요약한다.
   - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=medium`이 된다(skills `124fc73`부터, 051-15 사용자 결정; 그 앞 0.51.0 tree는 `high`). effort 값은 `low|medium|high|xhigh|max`다. subagent는 stage 모델·effort를 쓰고, 요약은 Claude stage 모델이면 `claude-haiku-5-5`가 stage effort로 쓴다. 재개는 run에 기록된 effort를 이어받는다.
   - key는 `ANTHROPIC_API_KEY`다(두 모델이 서로 다른 API면 key 둘 다). workspace에 묶이지 않은 key면 `ANTHROPIC_WORKSPACE_ID`도 준다(러너가 header로 보낸다; 실제 API로 확인한 적 없음).
@@ -60,7 +61,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 - **버전 경계:** 한 run은 한 version으로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(예: 0.48.x run → `v0.48.1`, 0.49.x run → `v0.49.4`, 0.50.x run → `v0.50.0`, 0.51.x run → `v0.51.0`, plugin `EARLIER_RELEASES`·README). patch는 같은 minor의 run을 재개한다(0.48.0 run → 0.48.1).
 - **참조 설치:** `python_env`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너는 설치 파일 hash를 실행 clone의 `PIN_SOURCE_HASH`와 대조해 다르면 launch 전에 멈춘다. 다른 version(재개 tag 포함)으로 돌리려면 그 version의 pin을 다시 설치한다(skills 루트 README "Build the run Python environment"). 예: 0.49.x는 `d92e67f`, 0.48.x는 `6054718`.
-- **Codex 버전(codex 러너):** 러너가 Codex CLI 0.169.1만 받는다(0.51.0부터 `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`, 0.50.0은 `scripts/agent_backend.py`; dry-run도 확인). 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
+- **Codex 버전(codex 러너):** 0.53.x까지는 러너가 Codex CLI 0.169.1만 받는다(0.51.0부터 `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`, 0.50.0은 `scripts/agent_backend.py`; dry-run도 확인). 0.54.0부터는 pin이 없다(11-23 사용자 결정, Claude Code도 같음): 설치된 버전으로 돌고, launch·재개마다 `codex_version`(claude는 `claude_version`)을 manifest에 남긴다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. 0.49.3 이하로 시작한 run은 지금 환경(Python 3.12, 새 controller pin, Codex 0.169.1)에서 재개할 수 없다.
 - **run 중 시험:** run이 도는 서버에서 skills plugin `tests/` 전체를 돌리지 않는다. `tests/test_device_command.py`의 wrapper가 run과 같은 host 잠금(`host_exclusion`)을 잡아, run의 장치 명령이 exit 125(`external-host-work`)로 거절되거나 시험이 실패한다(051 run 3 중 사본 시험에서 35 failed). 사본에서도 같다. 장치 wrapper를 쓰지 않는 시험 파일만 돌리거나 run이 끝난 뒤 돌린다. subagent에 시험을 맡길 때도 이렇게 적는다.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
@@ -87,7 +88,7 @@ $REPO/aviron-skills      execution clone: develop (runner chosen per launch: dee
 - **`env_set.sh`:** venv 경로를 꼭 둘째 인자로 넘긴다(`source $CHECKOUT/env_set.sh bos $REPO/python_env`). 인자가 없으면 `$CHECKOUT/python_env`를 찾는데, 그 3.10 환경은 11-18에 지웠다(활성화 없이 지나간다).
 - **uv:** `uv venv --seed`로 만든다(pip가 있어야 한다: `ensure_tools.py`, `prepare_references.py`가 `python -m pip`를 쓴다). Python은 `~/.local/share/uv/python/` 아래 uv 설치본이고, venv는 minor symlink(`cpython-3.12-…`)를 가리킨다. uv로 3.12 patch를 올리면 venv의 interpreter도 바뀌므로, 재현성을 따질 때는 `$PY -V`를 기록한다. `~/.local/share/uv/python/`을 지우면 환경이 깨진다.
 - **pin:** `pyarrow==25.0.1`(26은 NumPy 2를 요구해 lm_eval import가 깨진다). 러너 package는 `requirements-da.txt` 하나다(Deep Agents, LangChain, LangGraph; launch 때 설치하지 않는다). 두 러너 모두 launch마다 설치된 버전을 pin과 대조해 다르면 시작을 거부한다(deepagents는 deepagents·langchain·langchain-openai·langgraph, codex는 LangGraph 쪽 package).
-- **Codex:** `$CODEX_BIN`(`~/.local/bin/codex`)은 `codex update`로 올린다. 설치기가 `~/.bashrc` 끝에 PATH 줄을 더할 수 있다. 버전을 올리면 skills `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`과 맞아야 codex 러너가 시작한다.
+- **Codex:** `$CODEX_BIN`(`~/.local/bin/codex`)은 `codex update`로 올린다. 설치기가 `~/.bashrc` 끝에 PATH 줄을 더할 수 있다. 0.53.x 러너는 skills `scripts/runners/codex/agent_backend.py`의 `CODEX_VERSION`과 맞아야 시작한다. 0.54.0 러너는 버전을 확인하지 않는다.
 
 ## 준비 값
 
@@ -110,7 +111,7 @@ export REPO=<REPO>
 export CHECKOUT=$REPO/tt-metal-e2 SK=$REPO/aviron-skills/plugins/aviron-model-bringup
 export PY=$REPO/python_env/bin/python STACK=<stack manifest>
 export PYTHON_BIN=$PY
-export AVIRON_BRINGUP_RUNNER=<deepagents|codex>   # no default: a launch without it exits 2; a resume must name the run's runner
+export AVIRON_BRINGUP_RUNNER=<deepagents|codex|claude>   # no default: a launch without it exits 2; a resume must name the run's runner
 export AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 unset CODEX_MODEL CODEX_EFFORT                    # the codex runner would read these before AGENT_*
 export AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra REVIEW_EFFORT=medium   # defaults
@@ -120,6 +121,8 @@ export AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra RE
 export CODEX_HOME=<CODEX_HOME>
 export AVIRON_BRINGUP_CODEX_HOME=$CODEX_HOME
 export CODEX_BIN=<CODEX_BIN>
+# claude runner only (0.54.0):
+# export CLAUDE_BIN=$HOME/.local/bin/claude
 # deepagents runner only: OPENAI_API_KEY (Claude models: ANTHROPIC_API_KEY) comes from the calling shell (never written into this file, a command line or a log)
 export HF_MODEL=<org/model> MODEL_DIR=models/autoports/<model_dir>
 export DEV=/dev/bos/0                             # devcheck.sh, diskguard.sh, costguard.sh read it
@@ -167,7 +170,7 @@ $PY $SK/scripts/prepare_references.py check --python $PY --hf-model $HF_MODEL --
 $PY $SK/scripts/serving_stack.py --manifest $STACK --installed
 echo "$AVIRON_BRINGUP_RUNNER"                                  # deepagents 또는 codex
 # codex 러너
-$CODEX_BIN --version                                           # codex-cli 0.169.1
+$CODEX_BIN --version                                           # 0.53.x: codex-cli 0.169.1; 0.54.0: 기록만
 CODEX_HOME=$CODEX_HOME $CODEX_BIN login status
 # deepagents 러너
 test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력하지 않는다. Claude 모델이면 ANTHROPIC_API_KEY
@@ -201,7 +204,7 @@ grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_versio
 
 볼 값은 다음과 같다.
 
-- `runner=`가 고른 러너다. deepagents면 `model_api=openai`(Claude 모델이면 `model_api=anthropic`, `model=claude-sonnet-5-5`, `review_model=claude-opus-5-5`, `review_effort=medium`)와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version=codex-cli 0.169.1`, graph `a0-graph-2`가 있다.
+- `runner=`가 고른 러너다. deepagents면 `model_api=openai`(Claude 모델이면 `model_api=anthropic`, `model=claude-sonnet-5-5`, `review_model=claude-opus-5-5`, `review_effort=medium`)와 `deepagents_version`, graph `a0-graph-3`, codex면 `codex_home`·`codex_bin`·`codex_version`(0.53.x는 `codex-cli 0.169.1`), graph `a0-graph-2`가 있다.
 - `plugin_mode=clone`, `plugin_version`·`plugin_revision`이 실행 clone(tag), `reference_commit`이 skills pin과 같고 `reference_source_hash`가 있다.
 - `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`가 지시한 batch, `device_stop_verifier=all`.
 - `launch_note` 줄이 없다.
@@ -387,13 +390,14 @@ grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rol
 ## 연속 run 후보와 serving stack
 
 - **후보:** 러너가 entry stage(Stage 6, `--serving-after optimized-full-model`이면 Stage 5) 뒤 operator.md "Continuous run" 규칙으로 고르고 사용자 승인을 묻지 않는다. 고정하려면 `AVIRON_BRINGUP_SERVING_CANDIDATE`를 준다.
-- **stack manifest는 run마다 새로 만든다.** 띄우기 직전의 checkout으로 만들고, 옛 manifest는 다시 쓰지 않는다. `--create` 전에 vLLM·plugin checkout이 깨끗한지 확인한다. 남은 변경은 그대로 baseline이 된다(045차 044-15).
+- **stack manifest는 run마다 새로 만든다.** 띄우기 직전의 checkout으로 만들고, 옛 manifest는 다시 쓰지 않는다. `--create` 전에 plugin checkout이 깨끗한지 확인한다. 남은 변경은 그대로 baseline이 된다(045차 044-15).
   ```bash
   $PY $SK/scripts/serving_stack.py --create $CHECKOUT/bringup/serving/stack-<date>-<tag>.json \
-    --vllm $REPO/vllm --plugin $REPO/vllm-aviron-plugin --installed
+    --plugin $REPO/vllm-aviron-plugin --installed
   ```
+  0.54.0부터 vLLM은 `python_env`에 패키지로 설치돼(`--vllm` 없음) manifest가 버전·출처 commit·파일 hash로 기록한다. 0.53.x는 `--vllm <checkout>`이 필요했고, myA0 `$REPO/vllm` checkout은 11-23에 지웠다.
 - **run 뒤 plugin checkout:** `serving-complete` 뒤 plugin checkout이 baseline과 다르면, autoport를 지우기 전에 `third_party_patches/plugin.diff`와 대조하고 사용자에게 알린다.
-- **vLLM core:** commit 그대로여야 한다. core를 고쳐야 하면 commit을 고정해 새 manifest를 만든다.
+- **vLLM core:** 설치된 그대로여야 한다(파일 hash). core를 고쳐야 하면 고친 것을 설치하고 새 manifest를 만든다.
 
 ## 산출물 백업
 

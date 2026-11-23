@@ -1,6 +1,6 @@
 # run 운영·감시(watcher)
 
-watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8; stage 에이전트는 그 run의 러너 `deepagents`나 `codex`, [run.md](run.md) "러너 선택")가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
+watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8; stage 에이전트는 그 run의 러너 `deepagents`·`codex`·`claude`, [run.md](run.md) "러너 선택")가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
 
 - 실행 명령(시작 전 확인, dry-run, 시작, 재개)은 [run.md](run.md), 공통 운영 규칙은 [../SKILL.md](../SKILL.md), 상태 보기·멈추기·인증도 [run.md](run.md)에 있다. 이 문서는 언제 무엇을 할지만 정한다.
 - 실행 장비와 시험 장비는 그때 사용할 수 있는 것으로 정한다. 작업 프롬프트나 `aviron-skills/TODO.md`에 적힌 대로 따르고, 이 문서에서는 고정하지 않는다.
