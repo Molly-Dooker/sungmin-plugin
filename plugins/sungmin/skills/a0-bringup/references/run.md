@@ -64,8 +64,8 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 - **run 중 시험:** run이 도는 서버에서 skills plugin `tests/` 전체를 돌리지 않는다. `tests/test_device_command.py`의 wrapper가 run과 같은 host 잠금(`host_exclusion`)을 잡아, run의 장치 명령이 exit 125(`external-host-work`)로 거절되거나 시험이 실패한다(051 run 3 중 사본 시험에서 35 failed). 사본에서도 같다. 장치 wrapper를 쓰지 않는 시험 파일만 돌리거나 run이 끝난 뒤 돌린다. subagent에 시험을 맡길 때도 이렇게 적는다.
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
-- **자동 checker 수정(codex 러너):** 끈다(`AVIRON_BRINGUP_AUTO_CHECKER_FIX=off`). checker 결함은 watcher가 run 밖에서 고친다. deepagents 러너에는 이 기능이 없다.
 - **Codex home(codex 러너):** 실행 Codex home은 run 동안 러너만 쓴다. VS Code 확장·`codex mcp-server`·다른 app-server가 같은 home을 쓰면 한 프로세스의 토큰 갱신이 나머지에 401을 낸다. `CODEX_BIN`은 항상 실제 바이너리를 준다(PATH의 shim이면 `app-server --listen stdio://`를 못 띄운다).
+- **성능 잡음:** 같은 모델·같은 코드 경로라도 run 사이 decode 시간이 약 2~4% 오간다(tt-metal-e2 DRAM 배치 효과, sungmin `aviron-skills/rounds/053/조사/serving_성능_분석.md`, 053 run 3 native −4%). 이 범위의 차이를 skills 변경의 효과로 판단하지 않는다.
 - **호스트 메모리:** A0에 TT 모델이 올라가 있거나 장치 명령이 도는 중이면 HF 모델을 올리지 않는다.
 
 ## run 환경
@@ -120,7 +120,6 @@ export AGENT_MODEL=gpt-6.2-sol AGENT_EFFORT=medium REVIEW_MODEL=gpt-6.2-astra RE
 export CODEX_HOME=<CODEX_HOME>
 export AVIRON_BRINGUP_CODEX_HOME=$CODEX_HOME
 export CODEX_BIN=<CODEX_BIN>
-export AVIRON_BRINGUP_AUTO_CHECKER_FIX=off
 # deepagents runner only: OPENAI_API_KEY (Claude models: ANTHROPIC_API_KEY) comes from the calling shell (never written into this file, a command line or a log)
 export HF_MODEL=<org/model> MODEL_DIR=models/autoports/<model_dir>
 export DEV=/dev/bos/0                             # devcheck.sh, diskguard.sh, costguard.sh read it
