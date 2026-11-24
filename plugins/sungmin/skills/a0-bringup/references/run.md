@@ -66,7 +66,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 - **플러그인 모드:** clone 모드를 쓴다. 설치본 모드는 사용자가 지시할 때만 쓴다. clone + snapshot 모드(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)는 쓰지 않는다(040차 shared-code identity 실패).
 - **환경 변수 이름:** 러너 변수는 `AVIRON_BRINGUP_*`다. 옛 `BOS_BRINGUP_*`가 하나라도 설정돼 있으면 러너가 시작을 거부한다(exit 2).
 - **Codex home(codex 러너):** 실행 Codex home은 run 동안 러너만 쓴다. VS Code 확장·`codex mcp-server`·다른 app-server가 같은 home을 쓰면 한 프로세스의 토큰 갱신이 나머지에 401을 낸다. `CODEX_BIN`은 항상 실제 바이너리를 준다(PATH의 shim이면 `app-server --listen stdio://`를 못 띄운다).
-- **성능 잡음:** 같은 모델·같은 코드 경로라도 run 사이 decode 시간이 약 2~4% 오간다(tt-metal-e2 DRAM 배치 효과, sungmin `aviron-skills/rounds/053/조사/serving_성능_분석.md`, 053 run 3 native −4%). 이 범위의 차이를 skills 변경의 효과로 판단하지 않는다.
+- **성능 잡음:** tt-metal-e2를 DRAM 정렬 없이 빌드하면 같은 모델이라도 weight 시작 주소 mod 256에 따라 decode가 3~4% 오간다(할당 순서로 정해지는 결정적 현상, sungmin `aviron-skills/rounds/054/조사/dram_배치_랜덤성_검토_20261124.md`). 정렬 ON 빌드(아래 "run 환경")에서는 없어진다. 정렬 없는 빌드의 측정과 비교해 차이를 skills 변경의 효과로 판단하지 않는다.
 - **호스트 메모리:** A0에 TT 모델이 올라가 있거나 장치 명령이 도는 중이면 HF 모델을 올리지 않는다.
 
 ## run 환경
@@ -74,14 +74,14 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 tt-metal-e2 checkout 하나와 uv 가상환경 하나로 두 러너를 모두 돌린다. 구축 절차의 원본은 skills 루트 README "Build the run Python environment"이고, 여기에는 운영에서 걸리는 점만 적는다. 근거는 sungmin `aviron-skills/장기검토/구조개선검토/조사/DA_python환경통합_myA0_20261118.md` 10절이다.
 
 ```text
-$REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12
+$REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12, DRAM alignment ON
 $REPO/python_env         uv venv --seed, Python 3.12 (runner packages of both runners, ttnn, serving stack)
 $REPO/aviron-skills      execution clone: develop (runner chosen per launch: deepagents | codex)
 ```
 
-- **tt-metal-e2 재빌드:** 반드시 환경을 PATH 앞에 두고 빌드한다. `build_metal.sh`는 PATH의 `python3`로 binding(`ttnn/ttnn/_ttnn.so`)을 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다.
+- **tt-metal-e2 재빌드:** 반드시 환경을 PATH 앞에 두고, DRAM 정렬 옵션(`--enable-dram-large-buffer-alignment`, develop `bff8d661ee`부터, 기본 OFF)을 켜서 빌드한다. 플래그를 빼면 정렬이 꺼진다(skills 0.55.0 README 권장). 켜졌는지는 장치 log `DRAM large buffer alignment: 256 B`로 본다. `build_metal.sh`는 PATH의 `python3`로 binding(`ttnn/ttnn/_ttnn.so`)을 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다.
   ```bash
-  cd $CHECKOUT && PATH=$REPO/python_env/bin:$PATH VIRTUAL_ENV=$REPO/python_env ./build_metal.sh --build-type Release
+  cd $CHECKOUT && PATH=$REPO/python_env/bin:$PATH VIRTUAL_ENV=$REPO/python_env ./build_metal.sh --build-type Release --enable-dram-large-buffer-alignment
   $PY -c 'import ttnn; ttnn.bos_quantize_fused'   # then devcheck.sh (device smoke)
   ```
 - **checkout 하나 = Python 하나:** `_ttnn.so` 이름에 Python 버전 표시가 없다. 한 checkout을 두 Python 버전 환경이 함께 쓸 수 없다. 다른 버전이 필요하면 별도 checkout에서 빌드한다.
