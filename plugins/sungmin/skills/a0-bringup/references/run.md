@@ -48,7 +48,7 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
 
 - **한 run은 한 러너다.** 매 launch가 manifest에 `runner=<이름>`을 적고, 재개(`resume.sh`, `resume-with.sh`)가 다른 러너면 거부한다. `history.sh`(`--graph-history`)는 러너 지정이 필요 없다.
 - 모델 설정은 모든 러너가 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다. codex 러너는 `CODEX_MODEL`·`CODEX_EFFORT`가 있으면 그것을 먼저 읽는다.
-- **`claude` 러너(0.54.0, sungmin `aviron-skills/rounds/054/`):** stage 에이전트는 Claude Code CLI(`CLAUDE_BIN`; 비대화 ssh에는 `~/.local/bin`이 PATH에 없으니 `CLAUDE_BIN=$HOME/.local/bin/claude`를 준다)이고 `~/.claude`의 claude.ai 로그인을 쓴다(API key는 넘기지 않는다). 기본 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, effort `medium`, 요약 모델 없음(Claude Code 자체 compaction). 리뷰어도 Claude Code(`Read`·`Grep`·`Glob`만), stage 에이전트는 `RemoteTrigger`·`CronCreate`·`EnterWorktree` 금지. graph·도구·check·usage limit 대기는 codex 러너와 같다(`a0-graph-2`). manifest `runner=claude`, `claude_bin`·`claude_bin_target`·`claude_version`·`claude_auth`·`permission_mode`. 11-23 기준 dry-run과 장치 없는 짧은 시험만 했고 실제 run은 없다.
+- **`claude` 러너(0.54.0, sungmin `aviron-skills/rounds/054/`):** stage 에이전트는 Claude Code CLI(`CLAUDE_BIN`; 비대화 ssh에는 `~/.local/bin`이 PATH에 없으니 `CLAUDE_BIN=$HOME/.local/bin/claude`를 준다)이고 `~/.claude`의 claude.ai 로그인을 쓴다(API key는 넘기지 않는다). 기본 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, effort `medium`, 요약 모델 없음(Claude Code 자체 compaction). 리뷰어도 Claude Code(`Read`·`Grep`·`Glob`만), stage 에이전트는 `RemoteTrigger`·`CronCreate`·`EnterWorktree` 금지. graph·도구·check·usage limit 대기는 codex 러너와 같다(`a0-graph-2`). manifest `runner=claude`, `claude_bin`·`claude_bin_target`·`claude_version`·`claude_auth`·`permission_mode`. 실제 run: 054 run 1(0.54.0)·run 2(0.54.1), myA0 Llama 3.2 3B W8A8 b4, 둘 다 `serving-complete`(9시간 3분·8시간 11분). `autoUpdates: false`여도 Claude Code가 run 도중 바뀔 수 있다(054 run 2, 11-24 06:35 `2.1.330` → `2.1.331`, 원인 미확인). run 감시가 "codex version changed … (Claude Code)" 줄을 내면 run 기록에 시각을 적는다.
 - **deepagents의 모델 API는 모델 이름이 고른다(skills `v0.51.0` `b9546c7`부터):** `claude-`로 시작하면 Anthropic API, 아니면 OpenAI다. 따로 고르는 option은 없다. Claude stage 모델이면 대화 요약만 `claude-haiku-5-5`가 쓴다(skills 051-12; `usage.jsonl`의 `model`로 보이고 `usage.py`에 단가가 있다). OpenAI는 stage 모델이 요약한다.
   - Anthropic으로 돌리려면 `launch.env`에 `AGENT_MODEL=claude-sonnet-5-5`를 준다. 그러면 주지 않은 설정의 기본값이 `AGENT_EFFORT=medium`, `REVIEW_MODEL=claude-opus-5-5`, `REVIEW_EFFORT=medium`이 된다(skills `124fc73`부터, 051-15 사용자 결정; 그 앞 0.51.0 tree는 `high`). effort 값은 `low|medium|high|xhigh|max`다. subagent는 stage 모델·effort를 쓰고, 요약은 Claude stage 모델이면 `claude-haiku-5-5`가 stage effort로 쓴다. 재개는 run에 기록된 effort를 이어받는다.
   - key는 `ANTHROPIC_API_KEY`다(두 모델이 서로 다른 API면 key 둘 다). workspace에 묶이지 않은 key면 `ANTHROPIC_WORKSPACE_ID`도 준다(러너가 header로 보낸다; 실제 API로 확인한 적 없음).
@@ -301,6 +301,7 @@ run마다 세 개를 띄운다(run 감시, 디스크 보호, 그리고 codex는 
     bash <plugin>/skills/a0-bringup/scripts/costguard.sh <work> <limit USD> 25,50,100,200
   ```
   `<plugin>`은 설치된 sungmin-plugin 경로다. 실행 서버에 없으면 두 파일을 작업 폴더로 복사해 쓴다.
+- **사용량 감시(claude 러너만, 054 run 1):** 러너에는 계정 사용량 감시가 없다. 054 작업 폴더의 `claude_usage_watch.py`(121줄)를 복사해 unit으로 띄운다. stage log(`<run>/*.jsonl`)의 `rate_limit_event`(`unifiedWindows`의 `five_hour`·`seven_day` utilization·resetsAt·status)를 60 s마다 읽어 50·75·90·95·99%와 `allowed`가 아닌 status를 `events.log`에 적는다. 읽기만 하고 run을 멈추지 않는다. 한도 대기는 러너가 한다(`usage_limit_wait_*`). run 감시의 `--codex-bin $CLAUDE_BIN`은 Claude Code 버전이 바뀌면 줄을 내지만 문구가 "codex version"이다.
 - **리셋권 감시(codex 러너만):** deepagents run에는 띄우지 않는다(ChatGPT 계정 한도가 아니라 모델 API를 쓴다). 043 `codex_limit_watch.py`를 `$LIMITWATCH`로 복사한다. 띄우기 전에 `--read-now`로 사용량·reset 시각·남은 리셋권을 기록한다. 99% 이상, 한도 도달, usage-limit 대기 중 하나가 생기면 리셋권을 한 번 쓴다. 같은 계정 감시는 한 서버에만 둔다(041차, 서버 표). 리셋권이 0이면 99%에서 사용자에게 알린다.
   ```bash
   systemd-run --user --unit=codex2-reset-watch-r0NN-<model> ... $PY codex_limit_watch.py --codex-home $CODEX_HOME \
@@ -405,7 +406,7 @@ grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rol
 
 **autoport(`models/autoports/<model_dir>`):** run이 끝나면(`serving-complete`나 사용자가 정한 종료) 아래 순서로 한다. 원본 폴더 삭제까지 이 절차에 포함된다(11-20 사용자 지시). 장치 명령이 돌거나 다른 run이 그 autoport를 쓰는 동안에는 하지 않는다.
 
-1. 측정 원자료는 백업하지 않고 버린다: Tracy 원자료(`*.tracy`), profile CSV(`profile_log_device.csv`, `tracy_ops_times.csv`), 텐서(`*.pt`, `*.tensorbin`: HF reference layer 출력·logits 등 다시 만들 수 있는 것), `__pycache__`.
+1. 측정 원자료는 백업하지 않고 버린다: Tracy 원자료(`*.tracy`), profile CSV(`profile_log_device.csv`, `tracy_ops_times.csv`)와 그 gzip 사본(`*.tracy.gz`, `*_ops_times.csv.gz`, `profile_log_device.csv.gz`; 054 run 1 Stage 1이 남김, skills 0.54.1부터는 남기지 않음), 텐서(`*.pt`, `*.tensorbin`: HF reference layer 출력·logits 등 다시 만들 수 있는 것), `__pycache__`.
 2. 나머지(code, `doc/`, json·log·md)를 불투명 이름 `a0bk_<YYYYMMDDTHHMM>_<순번>.tgz`로 `$BACKUP`에 압축하고, `tar -d`로 원본과 대조한다.
 3. 대조가 `identical`이고 holder·refcnt가 0이면 원본 폴더를 지운다. `models/autoports/`는 빈 폴더로 둔다.
 4. sungmin 차수 문서의 백업 이름 대조표(예: `aviron-skills/rounds/051/조사/백업이름변경_myA0_20261120.md`)에 이름·내용·크기를 한 줄 더하고, run 기록에 백업 경로·크기·삭제 시각을 적는다.
@@ -415,7 +416,8 @@ cd $CHECKOUT
 SEQ=$(ls $BACKUP | sed -n 's/^a0bk_[0-9T]*_\([0-9]*\)\.tgz$/\1/p' | sort -n | tail -1); SEQ=$(printf %02d $((10#${SEQ:-0}+1)))
 B=$BACKUP/a0bk_$(date +%Y%m%dT%H%M)_$SEQ.tgz; [ -e "$B" ] && exit 1
 tar -czf "$B" -C models --exclude='*.pt' --exclude='*.tensorbin' --exclude='*.tracy' --exclude=profile_log_device.csv \
-  --exclude=tracy_ops_times.csv --exclude=__pycache__ autoports/<model_dir> && tar -dzf "$B" -C models && echo identical
+  --exclude=tracy_ops_times.csv --exclude='*.tracy.gz' --exclude='*_ops_times.csv.gz' --exclude=profile_log_device.csv.gz \
+  --exclude=__pycache__ autoports/<model_dir> && tar -dzf "$B" -C models && echo identical
 fuser /dev/bos/0; cat /sys/module/bos/refcnt          # 둘 다 비거나 0일 때만
 rm -rf models/autoports/<model_dir> && ls -la models/autoports
 ```

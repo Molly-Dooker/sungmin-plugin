@@ -72,6 +72,7 @@ wrapper 기록 판독:
 | `teardown=unconfirmed`, recovery 기록 UMD 0/0, holder 없음 | 장치를 열지 않은 host 명령 | 정상 |
 | `disposition=profile-failed` | profile 산출물 누락(막지 않음) | 에이전트가 고친다 |
 | exit 124, `classification=host-deadline`, `continue-stage` | deadline까지 끝나지 않았지만 장치를 연 적이 없다(deadline 시점 holder 없음, mesh 증거 없음, log에 UMD open 줄 없음) | 명령 실패로 본다. 에이전트가 고친다 |
+| 명령이 결과(예: `PARITY … mismatched 0`)를 낸 뒤 log가 "Server is running. Press Ctrl-C"에서 멈춰 wrapper 기한까지 대기 | skills 0.54.1 이하: hold 중인 `run_vllm_server`가 SIGINT를 받지 않는다(비대화 shell의 `&` job은 SIGINT 무시로 시작, 054 run 2 Stage 7 약 88분). 0.54.2에서 고침 | 운영자가 신호를 보내지 않는다. 기한에 wrapper가 SIGINT로 정리하고 러너 자동 검증이 돈다. 기록하고 보고한다 |
 | exit 126, `stop-device-work`, UMD open > close, holder 남음 | 장치 정지 | 러너 자동 검증이 먼저 돈다. 통과하면 이어 가고, 실패하면 exit 126(`stop_reason=device-verifier-failed`)으로 끝나 `await_ack`에서 기다린다. 그때 멈춘다(위 "멈추는 경우") |
 
 새 장치 명령을 막는 disposition은 `stop-device-work`·`incomplete`·`not-started`뿐이다.
@@ -95,6 +96,7 @@ event --> device stop? --yes--> stop: no reopen, preserve, notify user
 
 - **Codex `server_overloaded`·usage limit(codex 러너)**: runner가 같은 thread를 자동 재개한다. 재개됐는지만 확인한다.
 - **모델 API 오류·호출 상한(deepagents 러너)**: runner가 API 오류를 backoff로 재시도하지만 자동 재개는 없다. `stop_reason=turn-failed`(exit 5)로 끝나면 `stage_N_turn_error`를 읽는다. 일시적 오류나 호출 상한이면 `resume.sh`로 같은 thread를 잇는다. key·계정 문제면 [run.md](run.md) "인증이 풀렸을 때"를 따른다. 같은 오류가 재개 뒤에도 나면 되풀이하지 않고 사용자에게 알린다(한도·잔액 대응은 정해지지 않음).
+- **리뷰 stale로 정지(`stop_reason=review-critical-fail`, `stage_N_review=critical-fail:review source/config/reference identity is stale`)**: stage check는 통과했고 clean-pass 뒤 에이전트가 autoport의 `.py`·`.json`을 바꾼 것이다(장치 명령의 wrapper 기록 포함). 장치 정지가 아니다. holder·refcnt 0을 확인하고 `resume.sh <run> <N> -`로 같은 thread를 메모 없이 재개하면 에이전트가 리뷰를 다시 받는다(054 run 1 Stage 7: 재개 1분 뒤 `clean-pass`). skills 0.54.1부터 리뷰 결과 문장이 재리뷰를 요구한다.
 - **에이전트가 질문·결정 요청으로 blocked**: 권장안을 정하고, 사용자 답을 기다리지 않는다. 기본은 원인(지침·환경)을 고쳐 같은 run·Stage·thread를 메모 없이 재개하는 것이다(러너가 정지 이유를 싣는다). 고칠 수 없으면 그 Stage부터 새 세션을 시작한다. 메모는 사용자가 이미 허락했을 때만 쓴다. 그때는 active wrapper 0과 holder 0을 확인하고, unit이 살아 있으면 멈춘 뒤, 같은 run·Stage·thread를 메모와 함께 재개한다.
 - **에이전트가 skills(checker·지침·runner) 결함으로 blocked**: 실행 clone은 run 중 고정이다([../SKILL.md](../SKILL.md) "공통 운영 규칙").
   - 메모로 우회할 수 있고 사용자가 메모를 허락하면 우회하고, 고치는 것은 run 뒤에 한다.
