@@ -102,7 +102,7 @@ ssh myA0 'uptime -s; lspci -nn -s 01:00.0; ls -l /dev/bos/0; lsmod | grep -w bos
 
 ## sudo 설정(myA0, 사용자가 한 번)
 
-재부팅 명령은 비밀번호 없이 `reboot` 하나만 허용하는 sudoers 규칙으로 돌린다. 에이전트는 sudo 비밀번호를 받거나 저장하지 않는다(파일·환경변수·명령줄·log 모두). 11-20 확인 때는 설정되지 않았다(`sudo -n true` → `a password is required`).
+재부팅 명령은 비밀번호 없이 `reboot` 하나만 허용하는 sudoers 규칙으로 돌린다. 에이전트는 sudo 비밀번호를 받거나 저장하지 않는다(파일·환경변수·명령줄·log 모두). 11-20 15:43에 `/etc/sudoers.d/a0-reboot`로 설정됐다(11-24 확인: `sudo -n -l /usr/sbin/reboot` → `/usr/sbin/reboot`, rc 0).
 
 사용자가 host에서 한 번 실행한다(비밀번호는 사용자가 직접 입력한다).
 
@@ -110,4 +110,4 @@ ssh myA0 'uptime -s; lspci -nn -s 01:00.0; ls -l /dev/bos/0; lsmod | grep -w bos
 ssh -t myA0 'echo "bos ALL=(root) NOPASSWD: /usr/sbin/reboot" | sudo tee /etc/sudoers.d/a0-reboot >/dev/null && sudo chmod 440 /etc/sudoers.d/a0-reboot && sudo visudo -cf /etc/sudoers.d/a0-reboot'
 ```
 
-확인(재부팅하지 않음): `ssh myA0 sudo -n -l /usr/sbin/reboot`가 `/usr/sbin/reboot`를 출력하면 된다. 설정이 끝나면 이 절의 "11-20 확인 때는" 문장을 고친다.
+확인(재부팅하지 않음): `ssh myA0 sudo -n -l /usr/sbin/reboot`가 `/usr/sbin/reboot`를 출력하면 된다.
