@@ -59,8 +59,10 @@ ssh myA0 'date "+%F %T"; uptime -s; fuser -v /dev/bos/0; ps -eo pid,etime,cmd | 
 
 ```bash
 date '+%F %T'
-bash -ic 'plugstatus; plugoff || exit 1; [ "$(plugstatus)" = off ] || exit 2; sleep 5; plugon || exit 3; [ "$(plugstatus)" = on ] || exit 4' 2>/dev/null; echo rc=$?
+bash -ic 'w(){ for i in 1 2 3 4 5; do [ "$(plugstatus)" = $1 ] && return; sleep 2; done; return 1; }; plugstatus; plugoff || exit 1; w off || exit 2; sleep 5; plugon || exit 3; w on || exit 4' 2>/dev/null; echo rc=$?
 ```
+
+`w`는 상태를 2초 간격으로 최대 5번 본다. 플러그 상태가 명령 뒤 몇 초 늦게 바뀔 수 있다(11-24 17:08: `plugoff` 직후 `on`, 몇 초 뒤 `off`).
 
 | rc | 뜻 | 할 일 |
 |---|---|---|
