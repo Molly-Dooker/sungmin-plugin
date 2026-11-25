@@ -43,7 +43,7 @@ myA0 장치를 더 쓸 수 없을 때만 한다.
 - `/dev/bos/0`이나 PCI `01:00.0`이 사라짐(PCIe 이탈).
 - 장치를 연 process가 끝나지 않아 장치를 놓지 않음.
 
-**실행 전에 사용자 확인을 받는다.** 전원 차단은 돌고 있는 장치 명령과 결과를 잃게 한다. 장치를 쓰는 다른 사람·작업이 없는지도 함께 확인한다. FLR, PCI remove/rescan, `tt-smi` reset은 이 절차로도 하지 않는다.
+**실행 전에 사용자 확인을 받는다.** 예외(11-25 사용자 결정): 사용자가 켠 aviron-model-bringup skill `watcher`(`run_control.py watch`)와 aviron-kernel-bringup 러너(`--power-cycle on`)는 hang 판정 뒤 이 절차를 확인 없이 run당 3회까지 스스로 실행한다. 전원 차단은 돌고 있는 장치 명령과 결과를 잃게 한다. 장치를 쓰는 다른 사람·작업이 없는지도 함께 확인한다. FLR, PCI remove/rescan, `tt-smi` reset은 이 절차로도 하지 않는다.
 
 ### 전 확인(myA0)
 
@@ -59,14 +59,14 @@ ssh myA0 'date "+%F %T"; uptime -s; fuser -v /dev/bos/0; ps -eo pid,etime,cmd | 
 
 ```bash
 date '+%F %T'
-bash -ic 'w(){ for i in 1 2 3 4 5; do [ "$(plugstatus)" = $1 ] && return; sleep 2; done; return 1; }; plugstatus; plugoff || exit 1; w off || exit 2; sleep 5; plugon || exit 3; w on || exit 4' 2>/dev/null; echo rc=$?
+bash -ic 'w(){ for i in 1 2 3 4 5; do [ "$(plugstatus)" = $1 ] && return; sleep 2; done; return 1; }; plugstatus; plugoff || exit 1; w off || exit 2; sleep 5; plugon || exit 3; w on || exit 4; sleep 5' 2>/dev/null; echo rc=$?
 ```
 
-`w`는 상태를 2초 간격으로 최대 5번 본다. 플러그 상태가 명령 뒤 몇 초 늦게 바뀔 수 있다(11-24 17:08: `plugoff` 직후 `on`, 몇 초 뒤 `off`).
+`w`는 상태를 2초 간격으로 최대 5번 본다. 플러그 상태가 명령 뒤 몇 초 늦게 바뀔 수 있다(11-24 17:08: `plugoff` 직후 `on`, 몇 초 뒤 `off`). on 확인 뒤 5초를 기다리고 재부팅한다(11-25 사용자 결정): 11-25 16:24 실증에서 on 확인 직후 바로 재부팅하니 보드가 PCIe에 잡히지 않았고, 재부팅만 한 번 더 하니 돌아왔다. 5초가 충분한지는 아직 실증하지 않았다(미확인).
 
 | rc | 뜻 | 할 일 |
 |---|---|---|
-| 0 | off → 5초 → on 확인 | 재부팅으로 간다 |
+| 0 | off → 5초 → on 확인 → 5초 | 재부팅으로 간다 |
 | 1·2 | 끄기 실패, 또는 off가 확인되지 않음 | `plugstatus`를 한 번 더 본다. 상태가 바뀌지 않았으면 재부팅하지 말고 사용자에게 알린다 |
 | 3·4 | 꺼진 뒤 켜기 실패 | `plugon`을 다시 하고 `plugstatus`가 `on`일 때만 재부팅한다. 켜지지 않으면 사용자에게 알린다(보드가 꺼진 채로 남음) |
 

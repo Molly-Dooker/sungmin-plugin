@@ -2,7 +2,7 @@
 
 watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`, stage 0~8; stage 에이전트는 그 run의 러너 `deepagents`·`codex`·`claude`, [run.md](run.md) "러너 선택")가 Stage를 끝까지 돌게 만드는 운영자다. **장치 정지가 아니면 run을 멈추지 않는다.** 그 밖의 문제는 원인을 고치거나 우회해 같은 run을 이어 간다. 운영 결정은 사용자에게 묻지 않고 권장안을 실행한 뒤 기록하고 보고한다.
 
-- 실행 명령(시작 전 확인, dry-run, 시작, 재개)은 [run.md](run.md), 공통 운영 규칙은 [../SKILL.md](../SKILL.md), 상태 보기·멈추기·인증도 [run.md](run.md)에 있다. 이 문서는 언제 무엇을 할지만 정한다.
+- 실행 명령(시작 전 확인, dry-run, 시작, 재개)은 [run.md](run.md)(0.56.0부터 입구 `run_control.py`; 이 문서의 `resume.sh`·`resume-with.sh`는 입구의 `resume --stage`·`resume --answer`로 읽는다), 공통 운영 규칙은 [../SKILL.md](../SKILL.md), 상태 보기·멈추기·인증도 [run.md](run.md)에 있다. 이 문서는 언제 무엇을 할지만 정한다.
 - 실행 장비와 시험 장비는 그때 사용할 수 있는 것으로 정한다. 작업 프롬프트나 `aviron-skills/TODO.md`에 적힌 대로 따르고, 이 문서에서는 고정하지 않는다.
 - Stage 작업 자체는 runner의 에이전트가 한다. watcher는 goal 안의 작업을 대신하지 않는다.
 
@@ -19,7 +19,7 @@ watcher는 runner(`scripts/run_bringup`, LangGraph 러너 `graph_controller.py`,
 
 - 장치를 다시 열지 않는다. verifier도 포함한다.
 - log, 구조화 기록, PID, holder를 보존한다.
-- 사용자에게 알린다.
+- 사용자에게 알린다. 단 사용자가 그 run에 `run_control.py watch`를 켜 두었으면 아래 "자동 hang 복구"가 확인 없이 전원 복구와 재개를 하고, 그 결과를 알린다.
 - 사용자가 승인하면 verifier를 1회 돌린다. 통과하면 `resume-with.sh <run> '{"decision":"verified-resume","note":"..."}'`로 같은 run을 재개한다(러너가 `.ack`를 쓴다; [run.md](run.md) "멈추기"·"재개"). `.ack`를 손으로 쓰는 것은 인터럽트 없는 launch drain 정지 때만이다.
 - 러너 자동 검증(`device_stop_verifier=all`)이 통과해 같은 launch에서 이어 갔으면(`device_verify_<n>=passed`) 멈출 일이 아니다. 기록하고 보고한다.
 
@@ -76,6 +76,25 @@ wrapper 기록 판독:
 | exit 126, `stop-device-work`, UMD open > close, holder 남음 | 장치 정지 | 러너 자동 검증이 먼저 돈다. 통과하면 이어 가고, 실패하면 exit 126(`stop_reason=device-verifier-failed`)으로 끝나 `await_ack`에서 기다린다. 그때 멈춘다(위 "멈추는 경우") |
 
 새 장치 명령을 막는 disposition은 `stop-device-work`·`incomplete`·`not-started`뿐이다.
+
+## 자동 hang 복구: run_control.py watch (skills 0.56.0부터)
+
+원격 서버 run은 host에서 `python3 $RC --host <서버> --repo <repo> watch --run <run>`을 건다([run.md](run.md) "입구: run_control.py", plugin skill `watcher`). **사용자가 이 watch를 켜라고 한 run에서는, 러너 자동 검증까지 실패한 장치 hang을 사용자 확인 없이 전원 복구하고 재개한다(11-25 사용자 결정).** 켜라는 지시가 없었으면 위 "멈추는 경우"대로 알리고 기다린다.
+
+- **전제:** myA0 전용이다(스마트 플러그, [power.md](power.md)). host에서 `bash -ic plugstatus`가 되고, 서버에 `reboot` NOPASSWD 규칙이 있고, 서버가 이 run만 돌리고 있어야 한다(재부팅이 서버의 모든 것을 끝낸다). 켜기 전에 `--dry-run --once`로 찍히는 명령을 본다.
+- **띄우기:** host 세션의 background로 띄우고 출력은 파일로 받는다. 서버 안에서는 띄우지 않는다(재부팅에 같이 죽는다). 감시 unit 셋([run.md](run.md) "감시 unit")은 그대로 따로 띄운다. 재부팅하면 서버의 감시 unit도 없어지므로 복구 뒤 다시 띄운다.
+- **hang 판정(좁다):** active unit이 없고, 마지막 launch가 `run_status=stop-device-work`·`device_stop_verifier=all`이거나 장치 node가 없을 때만이다. 러너가 도는 중이거나 서버가 응답하지 않으면 전원을 건드리지 않고 기다린다.
+- **복구:** 보드 off(확인) → 5초 → on(확인) → 5초 → `sudo reboot` → 새 boot(최대 15분) → 장치 node·`bos` module 확인 → `verified-resume`으로 재개. run당 3회까지다(서버 `<run>/operator/power_cycles.jsonl`).
+
+| exit | 뜻 | 할 일 |
+|---|---|---|
+| 0 | run이 끝남 | 아래 "끝나면" |
+| 3 | hang이 아닌 정지 | 아래 "복구(장치 정지가 아닐 때)"로 고치고 재개한 뒤 watch를 다시 건다 |
+| 4 | 상한 3회에 닿았거나 서버에 다른 러너가 있음 | 사용자에게 바로 알린다. 전원을 손으로 다시 돌리지 않는다 |
+| 5 | 복구가 끝나지 않음(전원 명령 실패, 재부팅 거부, 장치가 안 돌아옴, 재개 실패) | watch의 마지막 줄과 함께 사용자에게 바로 알린다. 장치를 열지 않는다 |
+
+- 전원 복구는 한 번마다 시각·이유·결과를 run 기록과 autoport `doc/INTERVENTIONS.md`에 적고 보고한다(run이 이어졌어도).
+- 검증 상태(11-25): 전원·재부팅·판정 경로는 myA0에서 가짜 run 기록으로 실증했다(0.56.1). 실제 hang과 실제 run의 재개는 아직 겪지 않았다(sungmin `aviron-skills/rounds/056/README.md`).
 
 ## 복구(장치 정지가 아닐 때)
 

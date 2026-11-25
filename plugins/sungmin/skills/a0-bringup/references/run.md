@@ -1,6 +1,6 @@
 # run 실행: skills clone에서 직접 돌리기
 
-**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 플러그인 `aviron-model-bringup`을 clone 모드로 쓴다. 러너 `scripts/run_bringup`을 user systemd unit으로 띄우고(stage 에이전트는 launch마다 `--runner deepagents|codex`로 고른다, 아래 "러너 선택"), Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다(skills 0.48.0 이후 stage 번호). 명령은 모두 실행 서버에서 돌리고, 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 있다.
+**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 플러그인 `aviron-model-bringup`을 clone 모드로 쓴다. 러너 `scripts/run_bringup`을 user systemd unit으로 띄우고(0.56.0부터 아래 "입구: run_control.py"로 띄운다)(stage 에이전트는 launch마다 `--runner deepagents|codex`로 고른다, 아래 "러너 선택"), Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다(skills 0.48.0 이후 stage 번호). 명령은 모두 실행 서버에서 돌리고, 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 있다.
 
 - **러너 동작의 원본:** 플러그인 `skills/model-bringup/references/operator.md`(시작, 재개, 러너가 스스로 하는 일, serving, 연속 run, 종료 기록). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 operator.md를 따르고 이 문서를 고친다.
 - 공통 운영 규칙(실행 clone 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md)에 있다.
@@ -11,6 +11,29 @@ prepare refs (GPU host) -> precheck + devcheck -> dry-run -> launch unit + watch
    on stop: STOP file -> drain -> (device stop? verify once with user ok) -> resume-with.sh verified-resume (runner writes .ack)
    waiting interrupt (126 await_ack, 3 await_hold): resume-with.sh; other stops: resume.sh
 ```
+
+## 입구: run_control.py (skills 0.56.0부터)
+
+**시작(dry-run 포함)·상태·재개·멈추기·hang 감시는 plugin의 `scripts/run_control.py` 한 명령으로 한다(11-25 사용자 지시).** host에서 `--host <서버>`를 주면 ssh로 그 서버 실행 clone의 같은 script가 돌고, 서버에서 직접 돌릴 때는 `--host`를 뺀다. 러너(`run_bringup`)·checker는 그대로이고, 이 입구는 아래 "시작"의 `start.sh`·`resume.sh`·`resume-with.sh`·`launch-unit.sh`가 하던 일을 대신한다. 원본은 plugin skill `run`·`watcher`(`skills/run/SKILL.md`, `skills/watcher/SKILL.md`)와 operator.md다.
+
+```bash
+RC=<host의 aviron-skills clone 또는 설치본>/plugins/aviron-model-bringup/scripts/run_control.py
+A="--host myA0 --repo /home/bos/repo"          # 서버에서 직접이면 --repo만
+python3 $RC $A start --runner <deepagents|codex|claude> --hf-model <org/model> --max-batch <1|4> \
+  --serving-after benchmark-candidates --stack <stack manifest> --env KEY=VALUE ... [--env-file <서버의 파일>] --dry-run
+python3 $RC $A start ...                        # 같은 인자에서 --dry-run만 뺀다: unit=, run=, log= 출력
+python3 $RC $A status [--run <run>]             # unit, run_status, stop_stage, stop_reason, node, holders, hang 판정
+python3 $RC $A resume --run <run> --stage <N>   # 인터럽트 없는 정지 (아래 "재개"의 resume.sh)
+python3 $RC $A resume --run <run> --answer '<JSON>'   # 인터럽트 대기 (resume-with.sh)
+python3 $RC $A stop --run <run>                 # 아래 "멈추기" 1·2·4
+python3 $RC $A watch --run <run>                # host에서만: hang이면 전원 복구 뒤 재개 (watcher.md)
+```
+
+- **`launch.env`의 값은 `--env`로 준다:** unit은 셸 환경을 물려받지 않는다. 입구가 스스로 넣는 것은 `AVIRON_BRINGUP_RUNNER`, `HF_MODEL`, `PYTHON_BIN`(`<repo>/python_env/bin/python`), `--stack`의 manifest뿐이다. 아래 "준비 값" `launch.env`의 나머지(`AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1`, `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `MODEL_DIR`, 모델 설정 `AGENT_MODEL` 등, codex `CODEX_BIN`·`AVIRON_BRINGUP_CODEX_HOME`, claude `CLAUDE_BIN`, 장치가 여럿이면 `TT_VISIBLE_DEVICES`)는 `--env KEY=VALUE`로 하나씩 준다. 모델 API key는 명령줄에 쓰지 않고 서버의 `--env-file`(mode 600)로만 준다. 재개는 러너·모델·batch·mode를 manifest에서 읽는다.
+- **`run_bringup` option:** `--` 뒤에 그대로 적는다(예: `-- --skip-stage 0`).
+- **입구가 하지 않는 것:** 시작 전 확인(`precheck.sh`·`devcheck.sh`), HF 참조 준비, serving stack manifest 만들기, 감시 unit(run 감시·디스크 보호·비용·사용량·리셋권), `history.sh`, 산출물 백업. 이것들은 아래 절 그대로 한다. `LAUNCH_NOTE`도 사용자가 허락했을 때만 `--env LAUNCH_NOTE=...`로 준다.
+- **검증 상태(11-25):** 원격 입구 dry-run(claude·codex, rc 0), `status`, `watch`의 실제 전원 복구(0.56.1, myA0 1회)는 확인했다. **실제 run의 `start`·`resume`·`stop`은 아직 돌린 적이 없다.** 첫 실전에서 입구가 막히면(입구 자체의 오류; 러너의 거부는 해당 없음) 그 줄을 run 기록에 적고 아래 작업 폴더 script 방식으로 같은 일을 한 뒤 사용자에게 알린다.
+- 실행 서버의 clone이 0.56.0 이상이어야 한다(`--host`는 서버 clone의 script를 부른다).
 
 ## stage와 러너
 
@@ -189,6 +212,8 @@ test -n "$OPENAI_API_KEY" && echo key set                      # 값은 출력�
 
 ## dry-run
 
+입구로는 `python3 $RC $A start … --dry-run`이다: manifest를 출력하고, rc 0이면 자기가 이름을 정해 만든 run 폴더 하나만 지운다(rc가 0이 아니면 아무것도 지우지 않는다). 볼 값은 아래와 같다. 그 아래 `start.sh --dry-run` 절차는 입구를 쓰지 않을 때의 것이다.
+
 장치, 모델 API 호출, Codex turn 없이 prompt, manifest, tooling을 확인한다(deepagents는 key 없이 돈다. codex는 `CODEX_BIN` 버전을 확인한다). 새 run 폴더가 생기고, 확인 뒤 지운다. 러너를 둘 다 쓸 서버면 러너마다 한 번씩 돌린다.
 
 지울 폴더는 dry-run이 rc 0으로 끝났고, 앞뒤 폴더 목록을 비교해 새로 생긴 것이 정확히 하나일 때 그 폴더뿐이다. rc가 0이 아니면 지울 것이 없다. "가장 새 폴더"(`ls -td … | head -1`)를 지우지 않는다: 051 run 1(11-19 14:39)에서 dry-run이 rc 2로 폴더를 만들지 않아, 돌고 있던 run 폴더가 지워졌다.
@@ -215,6 +240,8 @@ grep -E "^(runner|model_api|deepagents_version|codex_home|codex_bin|codex_versio
 확인이 끝나면 위 조건(rc 0, 새 폴더 정확히 하나, 그 manifest에 `stage_0_dry_run=true`)을 다시 보고 `rm -rf "$R"` 한 뒤, `ls $RUNS`가 `runs_before.txt`와 같은지 본다.
 
 ## 시작
+
+입구로는 dry-run과 같은 인자에서 `--dry-run`만 뺀다(`python3 $RC $A start …`). 입구가 unit 이름(`bringup-<run 이름>-<시각>`)을 정해 아래 `launch-unit.sh`와 같은 unit 설정으로 띄우고 `unit=`·`run=`·`log=`를 낸다. unit이 바로 끝나면 log 끝을 내고 rc 1이다. 그 값을 작업 폴더 `unit.txt`·`run.txt`에 적는다(감시 script가 읽는다). 아래 script는 입구를 쓰지 않을 때의 것이고, unit 설정과 key 규칙의 설명은 두 방식에 모두 해당한다.
 
 작업 폴더 script:
 
@@ -310,6 +337,8 @@ run마다 세 개를 띄운다(run 감시, 디스크 보호, 그리고 codex는 
 
 ## 상태 보기
 
+입구: `python3 $RC $A status [--run <run>]`(`--run`이 없으면 가장 새 run). 아래 명령을 한 번에 본 것과 같고 hang 판정 한 줄이 붙는다. 반복해서 부르지 않는다(감시는 감시 unit과 `watch`가 한다).
+
 ```bash
 systemctl --user list-units --no-legend 'bringup-*' 'watch-*' 'codex2-*'
 tail -3 $CHECKOUT/bringup/runner-logs/<unit>.log
@@ -324,6 +353,8 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 - wrapper 기록은 `<run>/wrappers/*.json`이다. 판독표는 [watcher.md](watcher.md) "감시"에 있다.
 
 ## 재개
+
+입구: 같은 세션은 `python3 $RC $A resume --run <run> --stage <N>`, 인터럽트 대기는 `resume --run <run> --answer '<JSON>'`(JSON은 아래 표와 같다). 러너·모델·batch·mode·stack은 manifest에서 읽으므로 다시 주지 않는다. report run과 연속 run만 받는다(그 밖의 mode는 아래 script). 새 세션은 `start … -- --skip-stage <N>`이다.
 
 | 방식 | 언제 | 방법 |
 |---|---|---|
@@ -340,6 +371,8 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 - 러너가 스스로 하는 재개와 종료 기록(`run_status`·exit)은 operator.md "What the runner does on its own"·"Continuous run"에 있다. codex 러너는 usage limit 대기, 일시적 turn 오류 대기, host 실패 뒤 1회 재개를 스스로 한다. deepagents 러너는 모델 API 오류를 backoff로 재시도할 뿐이고, 오류가 이어지거나 모델 호출 3000회에 닿으면 `stop_reason=turn-failed`(exit 5, `stage_N_turn_error`)로, 에이전트가 blocked로 닫으면 `goal-blocked`(exit 3, `stage_N_blocked_error`)로 끝난다. 둘 다 운영자가 `resume.sh`로 같은 thread를 잇는다. controller crash 뒤 checkpoint 재개는 두 러너가 같다.
 
 ## 멈추기(장치 안전)
+
+입구: `python3 $RC $A stop --run <run>`이 아래 1·2·4를 한다. `STOP`을 두고, 장치 명령이 돌거나 holder가 있으면 아무 신호도 보내지 않고 그렇게 알린다(끝난 뒤 다시 부른다). 3(신호)과 5(기록)는 하지 않는다.
 
 1. 새 장치 명령 시작을 막는다: `touch <run>/wrappers/STOP`. 새 wrapper는 시작을 거부하고, 진행 중인 명령은 그대로 끝난다.
 2. `<run>/wrappers/status.json`이 `drained: true`, `blocking: []`가 될 때까지 기다린다.

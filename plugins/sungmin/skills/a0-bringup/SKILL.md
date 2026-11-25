@@ -20,7 +20,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 | 작업 | 읽을 문서 |
 |---|---|
 | run 실행(HF 참조, 시작 전 확인, dry-run, 시작, 상태 보기, 재개, 멈추기, 인증, serving, 백업). 별도 지시가 없으면 이 방식으로 돌린다 | [references/run.md](references/run.md) |
-| run 운영·감시(watcher) | [references/watcher.md](references/watcher.md) |
+| run 운영·감시(watcher), 자동 hang 복구(`run_control.py watch`) | [references/watcher.md](references/watcher.md) |
 | skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현). 운영 문서만 고치는 일은 제외 | [references/change-gate.md](references/change-gate.md) |
 | 보드 전원: 스마트 플러그 명령(`plugstatus`·`plugon`·`plugoff`), myA0 장치 hang 때 전원 껐다 켜기·재부팅, sudo 설정 | [references/power.md](references/power.md) |
 | 서버별 접속·경로·환경 | sungmin `aviron-skills/startingpoint.md` "서버" |
@@ -53,7 +53,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 run 실행·감시·skills 변경에 모두 적용한다.
 
 - **run 중 실행 clone 고정:** run이 도는 동안에는 실행 clone을 고치거나 origin에서 `git pull`하지 않는다. 러너가 stage check마다 plugin tree를 시작 때와 비교해, 다르면 check 없이 멈춘다(`plugin-modified`). 재현은 실행 clone 밖의 임시 사본에서 한다.
-- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자 확인 뒤 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구하고, 다른 서버는 사용자에게 재부팅을 요청한다.
+- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자 확인 뒤 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구하고(사용자가 켠 `run_control.py watch`와 aviron-kernel-bringup 러너는 확인 없이 run당 3회까지 스스로 한다, 11-25 사용자 결정), 다른 서버는 사용자에게 재부팅을 요청한다.
 - **운영자 메모:** `LAUNCH_NOTE`는 사용자가 지시하거나 허락할 때만 쓴다(300차 사용자 지시). 한 번 넣으면 그 뒤 모든 stage와 재개 objective에 붙고, 뗄 방법이 없다.
 - **산출물:** 기존 산출물은 `$BACKUP`에 불투명 이름(`a0bk_<시각>_<순번>.tgz`)으로 압축해 둔다. 끝난 run의 autoport는 측정 원자료(Tracy·profile CSV·텐서)를 빼고 압축·대조한 뒤 원본을 지운다([references/run.md](references/run.md) "산출물 백업"). 그 밖의 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.
 - **commit 메시지:** skills commit은 영어로 `aviron-model-bringup <version>: …` 형식을 쓴다.
