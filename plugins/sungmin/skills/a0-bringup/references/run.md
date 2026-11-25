@@ -26,13 +26,13 @@ python3 $RC $A status [--run <run>]             # unit, run_status, stop_stage, 
 python3 $RC $A resume --run <run> --stage <N>   # 인터럽트 없는 정지 (아래 "재개"의 resume.sh)
 python3 $RC $A resume --run <run> --answer '<JSON>'   # 인터럽트 대기 (resume-with.sh)
 python3 $RC $A stop --run <run>                 # 아래 "멈추기" 1·2·4
-python3 $RC $A watch --run <run>                # host에서만: hang이면 전원 복구 뒤 재개 (watcher.md)
+python3 $RC $A watch --run <run>                # host에서만: 자동 hang 복구 (aviron-model-bringup skill `watcher`)
 ```
 
 - **`launch.env`의 값은 `--env`로 준다:** unit은 셸 환경을 물려받지 않는다. 입구가 스스로 넣는 것은 `AVIRON_BRINGUP_RUNNER`, `HF_MODEL`, `PYTHON_BIN`(`<repo>/python_env/bin/python`), `--stack`의 manifest뿐이다. 아래 "준비 값" `launch.env`의 나머지(`AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1`, `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `MODEL_DIR`, 모델 설정 `AGENT_MODEL` 등, codex `CODEX_BIN`·`AVIRON_BRINGUP_CODEX_HOME`, claude `CLAUDE_BIN`, 장치가 여럿이면 `TT_VISIBLE_DEVICES`)는 `--env KEY=VALUE`로 하나씩 준다. 모델 API key는 명령줄에 쓰지 않고 서버의 `--env-file`(mode 600)로만 준다. 재개는 러너·모델·batch·mode를 manifest에서 읽는다.
 - **`run_bringup` option:** `--` 뒤에 그대로 적는다(예: `-- --skip-stage 0`).
 - **입구가 하지 않는 것:** 시작 전 확인(`precheck.sh`·`devcheck.sh`), HF 참조 준비, serving stack manifest 만들기, 감시 unit(run 감시·디스크 보호·비용·사용량·리셋권), `history.sh`, 산출물 백업. 이것들은 아래 절 그대로 한다. `LAUNCH_NOTE`도 사용자가 허락했을 때만 `--env LAUNCH_NOTE=...`로 준다.
-- **검증 상태(11-25):** 원격 입구 dry-run(claude·codex, rc 0), `status`, `watch`의 실제 전원 복구(0.56.1, myA0 1회)는 확인했다. **실제 run의 `start`·`resume`·`stop`은 아직 돌린 적이 없다.** 첫 실전에서 입구가 막히면(입구 자체의 오류; 러너의 거부는 해당 없음) 그 줄을 run 기록에 적고 아래 작업 폴더 script 방식으로 같은 일을 한 뒤 사용자에게 알린다.
+- **검증 상태(11-25):** 원격 입구 dry-run(claude·codex, rc 0), `status`는 확인했다. **실제 run의 `start`·`resume`·`stop`은 아직 돌린 적이 없다.** 첫 실전에서 입구가 막히면(입구 자체의 오류; 러너의 거부는 해당 없음) 그 줄을 run 기록에 적고 아래 작업 폴더 script 방식으로 같은 일을 한 뒤 사용자에게 알린다.
 - 실행 서버의 clone이 0.56.0 이상이어야 한다(`--host`는 서버 clone의 script를 부른다).
 
 ## stage와 러너
@@ -398,12 +398,12 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 하지 않는 것:
 
 - 넓은 `pkill -f`를 쓰지 않는다.
-- 장치를 연 프로세스를 강제로 죽이지 않는다. FLR, PCI remove/rescan, `tt-smi` reset을 하지 않는다. FW init이 실패하면 장치 작업을 멈추고 재부팅한다(사용자 확인). myA0는 [power.md](power.md) 절차(보드 전원 껐다 켜기 뒤 재부팅)로 한다.
+- 장치를 연 프로세스를 강제로 죽이지 않는다. FLR, PCI remove/rescan, `tt-smi` reset을 하지 않는다. FW init이 실패하면 장치 작업을 멈추고 사용자에게 알린다.
 
 wrapper가 `stop-device-work`(exit 126, 기한 종료 포함)로 끝났거나 wrapper 기록에 exit가 없으면(러너가 먼저 죽음):
 
 - 장치를 다시 열지 않는다(`verify_device.py` 포함). hang 장치를 다시 열면 PCIe 이탈이 난다(026차 조사).
-- 명령 log 끝에 mesh close가 있고 holder가 없을 때만, 사용자 승인 뒤 wrapper로 verifier를 1회 돌린다. 그 밖에는 재부팅한다(myA0는 [power.md](power.md)).
+- 명령 log 끝에 mesh close가 있고 holder가 없을 때만, 사용자 승인 뒤 wrapper로 verifier를 1회 돌린다. 그 밖에는 멈추고 사용자에게 알린다.
 - verifier가 통과했거나 재부팅한 뒤에는 `resume-with.sh <run> '{"decision":"verified-resume","note":"<누구, 언제, verifier 통과 또는 재부팅>"}'`로 같은 run을 재개한다. 러너가 blocking 기록마다 `wrappers/<registration>.ack`에 note를 적고 drain한 뒤 같은 stage thread를 잇는다. `.ack`를 손으로 쓰고 `resume.sh`로 띄우면 거부된다.
 - 인터럽트 없이 launch drain에서 막힌 경우(러너가 장치 명령 중에 죽음, `stop_reason=wrapper-drain-at-launch`)만 `.ack`(이유·누구·언제 한 줄)를 손으로 두고 `resume.sh`로 재개한다. drain은 ack된 기록을 해결로 치고 원래 기록은 그대로 둔다. registry를 옮기거나 새 run을 띄우지 않는다.
 - `continue-stage`로 끝난 명령 실패는 drain을 막지 않는다.

@@ -19,7 +19,7 @@ sungmin-plugin/
 | skill | 내용 |
 |---|---|
 | `work-principles` | 모든 작업의 공통 원칙, 문서·기록 작성, subagent 위임 |
-| `a0-bringup` | A0 브링업 입구(시작 순서, 정본 위치, 공통 운영 규칙). `references/run.md` run 실행, `references/watcher.md` 운영·감시, `references/change-gate.md` aviron-skills 변경 관문, `references/power.md` 스마트 플러그·myA0 hang 복구(전원 껐다 켜기·재부팅) |
+| `a0-bringup` | A0 브링업 입구(시작 순서, 정본 위치, 공통 운영 규칙). `references/run.md` run 실행, `references/watcher.md` 운영·감시, `references/change-gate.md` aviron-skills 변경 관문 |
 | `aviron-transformers` | aviron-transformers 작업 입구 |
 
 `work-principles`는 Claude Code에서 SessionStart hook(`hooks/session-start.sh`)이 세션 시작 때마다 본문과 작업별 skill 안내를 context에 넣는다. 그래서 따로 부르지 않아도 항상 적용된다. `a0-bringup`·`aviron-transformers`는 skill로 두고, 해당 작업을 지시하면 description으로 자동 선택된다. `/sungmin:<skill>`로 부르면 그 skill의 절차(예: "시작할 때")를 바로 실행한다.
