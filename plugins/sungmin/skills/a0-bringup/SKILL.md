@@ -1,6 +1,6 @@
 ---
 name: a0-bringup
-description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플러그인) 작업 지침. 새 lean 파이프라인(bos-semi/skills, plugin aviron-model-bringup@skills, 문서 sungmin lean-skills) 작업의 입구도 여기다. 작업 시작(현재 기준 요약), A0 run 실행(시작 전 확인·dry-run·시작·재개·serving), run 운영·감시(watcher), aviron-skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현), 차수 문서 작업, 스마트 플러그(plugon·plugoff·plugstatus)로 myA0 보드 전원 확인·조작, myA0 장치 hang 복구(보드 전원 껐다 켜기·재부팅) 전에 적용한다.
+description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플러그인) 작업 지침. 작업 시작(현재 기준 요약), A0 run 실행(시작 전 확인·dry-run·시작·재개·serving), run 운영·감시(watcher), aviron-skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현), 차수 문서 작업, 스마트 플러그(plugon·plugoff·plugstatus)로 myA0 보드 전원 확인·조작, myA0 장치 hang 복구(보드 전원 껐다 켜기·재부팅) 전에 적용한다.
 ---
 
 # A0 모델 브링업
@@ -13,7 +13,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 
 `aviron-skills/AGENTS.md`, `aviron-skills/TODO.md`, 지금 차수 `aviron-skills/rounds/0NN/README.md`를 읽는다. 현재 기준(skills develop commit, tt-metal commit, 서버·run 상태)과 남은 할 일을 먼저 요약한다.
 
-새 lean 파이프라인(`bos-semi/skills`) 작업이면 대신 sungmin `lean-skills/AGENTS.md`, `lean-skills/TODO.md`, 지금 차수 `lean-skills/rounds/0NN/1_개선안.md`를 읽고 같은 방식으로 요약한다.
+**lean 파이프라인은 보류 중이다(11-25 사용자 지시).** 코드는 `bos-semi/aviron-skills` branch `lean-experimental`(`bos-semi/skills` `develop` `fcea958`의 사본), 문서와 기록은 sungmin `lean-skills/`에 있다. 사용자가 다시 꺼내기 전까지는 읽지도, 고치지도, run하지도 않고 다른 작업의 판단에도 넣지 않는다(aviron-skills 작업에서 "lean과 비교" 같은 제안도 하지 않는다). 다시 시작하면 `lean-skills/AGENTS.md`(재개 순서, lean 변경 기준)부터 읽는다.
 
 ## 작업별 문서
 
@@ -41,14 +41,8 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 ## 정본 위치
 
 - 문서와 기록은 host sungmin에 쓴다. 코드 작업과 commit·push는 별도 지시가 없으면 실행 서버 `$REPO` 안의 저장소에서 직접 한다(11-04 사용자 지시). skills는 `$REPO/aviron-skills`, 참조 aviron-transformers clone은 `$REPO/aviron-transformers`, tt-metal-e2는 `$REPO/tt-metal-e2`다.
-- skills 플러그인은 `aviron-model-bringup`(`bos-semi/aviron-skills`, plugin ID `aviron-model-bringup@aviron-skills`)이다. version `0.NN.x` = 차수 `0NN`이다. 저장소에는 branch `develop` 하나만 있고 버전은 tag `vX.Y.Z`로 구분한다. 지금 `develop`·tag·차수는 `aviron-skills/TODO.md`에, 옛 플러그인(`tt-model-bringup-a0`)과 branch 이력은 `aviron-skills/history.md`와 `aviron-skills/rounds/_legacy/`에 있다.
+- skills 플러그인은 `aviron-model-bringup`(`bos-semi/aviron-skills`, plugin ID `aviron-model-bringup@aviron-skills`)이다. version `0.NN.x` = 차수 `0NN`이다. 저장소의 작업 branch는 `develop` 하나이고(보류 중인 lean의 `lean-experimental`은 무시한다) 버전은 tag `vX.Y.Z`로 구분한다. 지금 `develop`·tag·차수는 `aviron-skills/TODO.md`에, 옛 플러그인(`tt-model-bringup-a0`)과 branch 이력은 `aviron-skills/history.md`와 `aviron-skills/rounds/_legacy/`에 있다.
 - skills 수정·시험·commit은 별도 clone이 아니라 실행 clone `$REPO/aviron-skills`에서 직접 한다(11-10 사용자). run 지침 변경은 `aviron-model-bringup` 플러그인에서만 한다.
-- **새 파이프라인 작업은 별도 저장소 `bos-semi/skills`에서 한다(11-25 사용자 지시).** 작업 branch는 `develop`이고 clone은 host `~/repo/skills` 하나다. 실행 서버에는 clone도 설치도 두지 않는다: 래퍼가 launch 때 plugin을 run workspace(`<workspace>/plugin`)로 복사한다(0.1.3, 11-25 사용자 지시)(plugin `aviron-model-bringup`, marketplace `skills`, plugin ID `aviron-model-bringup@skills`; 11-25 사용자 지시로 `aviron-bringup`에서 이름을 바꿨다. aviron-skills의 `aviron-model-bringup@aviron-skills`와 이름이 같으므로 marketplace로 구분한다). `aviron-skills`에는 branch `lean`이 없다. 문서와 기록은 sungmin `lean-skills/`에서 다룬다(11-25 사용자 지시): 지금 상태와 할 일은 `lean-skills/TODO.md`, 차수 계획은 `lean-skills/rounds/0NN/1_개선안.md`에 있다. 11-25까지의 조사·설계는 `aviron-skills/장기검토/새파이프라인/`과 `aviron-skills/장기검토/lean/`에 남아 있다. 위와 아래의 `aviron-skills`·`aviron-model-bringup` 규칙(차수, version, change-gate)은 이 저장소에 적용하지 않는다.
-- **lean plugin 변경 기준(11-25 사용자 결정):** lean이 aviron-skills처럼 무거워지지 않게 다음 선을 지킨다. subagent에 lean 변경을 맡길 때는 이 네 줄을 지시문에 넣는다.
-  - gate(`criteria.json`)는 결과물이 맞는지를 정하는 숫자만 검사한다. 산출물 형식·중간 단계·작업 순서는 검사하지 않는다.
-  - 지침(skill `model`과 그 references)은 사실과 교훈을 짧게 쓰고, 합계 약 300줄을 예산으로 둔다. 넘으면 새로 넣기보다 기존 것을 줄인다.
-  - 실제 run에서 막히거나 시간을 버린 것만 넣는다. aviron-skills 내용을 미리 옮겨 오지 않는다(기준값은 aviron-skills 수치를 따른다, 11-25 사용자 지시).
-  - run 에이전트가 NOTES "Lessons"에 남긴 교훈은 사람이 걸러서 넣는다.
 - **러너는 launch마다 고른다:** 한 tree(`develop`)가 모든 러너를 돌린다. `run_bringup --runner deepagents|codex|claude`(`claude`는 0.54.0부터)나 `AVIRON_BRINGUP_RUNNER`로 고르고, 기본값이 없어 빠지면 시작하지 않는다(exit 2). `deepagents`는 Deep Agents stage 에이전트가 모델 API를 직접 부르고(모델 이름이 `claude-…`면 Anthropic API와 `ANTHROPIC_API_KEY`, 아니면 OpenAI와 `OPENAI_API_KEY`), `codex`는 Codex app-server goal이다(`CODEX_BIN`, Codex home). 사용자가 러너를 말하지 않았으면 묻는다. 러너를 바꾸려고 branch를 바꾸지 않는다. 러너별 입력·확인·멈추기·인증은 [references/run.md](references/run.md) "러너 선택"에 있다.
 - **run 환경:** tt-metal-e2 checkout 하나(`$REPO/tt-metal-e2`, Python 3.12, DRAM 정렬 ON으로 빌드)와 uv 가상환경 하나(`$REPO/python_env`, Python 3.12)를 두 러너가 함께 쓴다. 구축·재빌드 주의점은 [references/run.md](references/run.md) "run 환경"과 skills 루트 README "Build the run Python environment"에 있다.
 - 참조 aviron-transformers는 skills submodule이 아니라 run 환경 `python_env`에 설치한 package `tt_transformers`다. skills의 pin commit에 checkout한 clone에서 non-editable `--no-deps`로 설치하고, 러너가 설치된 파일 hash를 pin과 대조한다(다르면 launch 전에 error). 구축 절차는 skills 루트 README "Build the run Python environment"에 있다. 참조 코드를 고치면 clone에서 commit하고 skills의 `PIN`·`PIN_SOURCE_HASH`와 설치를 새 commit에 맞춘다.
@@ -59,7 +53,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 run 실행·감시·skills 변경에 모두 적용한다.
 
 - **run 중 실행 clone 고정:** run이 도는 동안에는 실행 clone을 고치거나 origin에서 `git pull`하지 않는다. 러너가 stage check마다 plugin tree를 시작 때와 비교해, 다르면 check 없이 멈춘다(`plugin-modified`). 재현은 실행 clone 밖의 임시 사본에서 한다.
-- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자 확인 뒤 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구하고, 다른 서버는 사용자에게 재부팅을 요청한다. 예외(11-25 사용자 결정): 새 lean 파이프라인의 host 래퍼는 launch 때 자동 전원 cycle이 켜져 있으면(기본 켜짐) run 도중 장치 명령 timeout이나 장치 재개방 실패를 보고 사용자 확인 없이 같은 전원 절차를 실행한다. run당 횟수 상한은 없고, 매번 run 폴더 `recoveries/`에 기록한다. 래퍼 밖에서 사람이나 대화창 에이전트가 직접 전원을 끊을 때는 lean 작업이어도 사용자 확인을 받는다.
+- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자 확인 뒤 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구하고, 다른 서버는 사용자에게 재부팅을 요청한다.
 - **운영자 메모:** `LAUNCH_NOTE`는 사용자가 지시하거나 허락할 때만 쓴다(300차 사용자 지시). 한 번 넣으면 그 뒤 모든 stage와 재개 objective에 붙고, 뗄 방법이 없다.
 - **산출물:** 기존 산출물은 `$BACKUP`에 불투명 이름(`a0bk_<시각>_<순번>.tgz`)으로 압축해 둔다. 끝난 run의 autoport는 측정 원자료(Tracy·profile CSV·텐서)를 빼고 압축·대조한 뒤 원본을 지운다([references/run.md](references/run.md) "산출물 백업"). 그 밖의 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.
 - **commit 메시지:** skills commit은 영어로 `aviron-model-bringup <version>: …` 형식을 쓴다.
