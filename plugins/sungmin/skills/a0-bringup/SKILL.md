@@ -1,11 +1,11 @@
 ---
 name: a0-bringup
-description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플러그인) 작업 지침. 작업 시작(현재 기준 요약), A0 run 실행(시작 전 확인·dry-run·시작·재개·serving), run 운영·감시(watcher), aviron-skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현), 차수 문서 작업 전에 적용한다.
+description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플러그인) 작업 지침. 작업 시작(현재 기준 요약), A0 run 실행(시작 전 확인·dry-run·시작·재개·serving), run 운영·감시(watcher), aviron-skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현), 차수 문서 작업, 스마트 플러그(plugon·plugoff·plugstatus)로 myA0 보드 전원 확인·조작, myA0 장치 hang 복구(보드 전원 껐다 켜기·재부팅) 전에 적용한다.
 ---
 
 # A0 모델 브링업
 
-BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin skill `aviron-model-bringup:run`·`watcher`와 operator.md이고, 이 skill은 sungmin 운영 값·판단·기록 규칙만 더한다.
+BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.55.0), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0의 실행 clone에서 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
 
 운영 문서와 기록은 문서 저장소 sungmin의 `aviron-skills/`에 있다. 그 폴더의 `AGENTS.md`가 문서 지도, 차수 폴더 규칙, 기록 규칙, 옛 이름·branch → tag 대조를 정한다. 이 skill과 `references/`의 `aviron-skills/…` 경로는 sungmin 저장소 기준이다.
 
@@ -19,9 +19,10 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 
 | 작업 | 읽을 문서 |
 |---|---|
-| run 실행(입구 `run_control.py`, HF 참조, 시작 전 확인, 감시 unit, 재개, 멈추기, 인증, serving, 백업) | [references/run.md](references/run.md) |
+| run 실행(작업 폴더 script, HF 참조, 시작 전 확인, dry-run, 시작, 감시 unit, 상태 보기, 재개, 멈추기, 인증, serving, 백업). 별도 지시가 없으면 이 방식으로 돌린다 | [references/run.md](references/run.md) |
 | run 운영·감시(watcher) | [references/watcher.md](references/watcher.md) |
 | skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현). 운영 문서만 고치는 일은 제외 | [references/change-gate.md](references/change-gate.md) |
+| 보드 전원: 스마트 플러그 명령(`plugstatus`·`plugon`·`plugoff`), myA0 장치 hang 때 전원 껐다 켜기·재부팅·재개, sudo 설정 | [references/power.md](references/power.md) |
 | 서버별 접속·경로·환경 | sungmin `aviron-skills/startingpoint.md` "서버" |
 
 ## 환경 값
@@ -52,7 +53,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 run 실행·감시·skills 변경에 모두 적용한다.
 
 - **run 중 실행 clone 고정:** run이 도는 동안에는 실행 clone을 고치거나 origin에서 `git pull`하지 않는다. 러너가 stage check마다 plugin tree를 시작 때와 비교해, 다르면 check 없이 멈춘다(`plugin-modified`). 재현은 실행 clone 밖의 임시 사본에서 한다.
-- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 장치 작업을 멈추고 사용자에게 알린다. 전원 복구·재부팅은 이 skill이 다루지 않는다(plugin skill `watcher`, 사용자가 켤 때만).
+- **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자에게 묻지 않고 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구해 같은 run을 재개하고, 끝난 뒤 보고한다. 횟수 제한은 없다(11-26 사용자 지시). 다른 서버는 사용자에게 재부팅을 요청한다.
 - **운영자 메모:** `LAUNCH_NOTE`는 사용자가 지시하거나 허락할 때만 쓴다. 한 번 넣으면 그 뒤 모든 stage와 재개 objective에 붙고, 뗄 방법이 없다.
 - **산출물:** 기존 산출물은 `$BACKUP`에 불투명 이름(`a0bk_<시각>_<순번>.tgz`)으로 압축해 둔다. 끝난 run의 autoport는 측정 원자료(Tracy·profile CSV·텐서)를 빼고 압축·대조한 뒤 원본을 지운다([references/run.md](references/run.md) "산출물 백업"). 그 밖의 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.
 - **commit 메시지:** skills commit은 영어로 `aviron-model-bringup <version>: …` 형식을 쓴다.

@@ -17,7 +17,7 @@ sungmin-plugin/
 
 | skill | 내용 |
 |---|---|
-| `a0-bringup` | A0 브링업 입구(시작 순서, 정본 위치, 공통 운영 규칙). `references/run.md` run 실행, `references/watcher.md` 운영·감시, `references/change-gate.md` aviron-skills 변경 관문 |
+| `a0-bringup` | A0 브링업 입구(시작 순서, 정본 위치, 공통 운영 규칙). `references/run.md` run 실행, `references/watcher.md` 운영·감시, `references/change-gate.md` aviron-skills 변경 관문, `references/power.md` 스마트 플러그·myA0 hang 복구(전원 껐다 켜기·재부팅, 확인 없이·횟수 제한 없이) |
 
 `a0-bringup`은 해당 작업을 지시하면 description으로 자동 선택된다. `/sungmin:<skill>`로 부르면 그 skill의 절차(예: "시작할 때")를 바로 실행한다.
 
