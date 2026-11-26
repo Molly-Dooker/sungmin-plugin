@@ -7,13 +7,12 @@ description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플�
 
 BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.55.0), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0의 실행 clone에서 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
 
-운영 문서와 기록은 문서 저장소 sungmin의 `aviron-skills/`에 있다. 그 폴더의 `AGENTS.md`가 문서 지도, 차수 폴더 규칙, 기록 규칙, 옛 이름·branch → tag 대조를 정한다. 이 skill과 `references/`의 `aviron-skills/…` 경로는 sungmin 저장소 기준이다.
+운영 문서와 기록은 문서 저장소 sungmin의 `aviron-skills/`에 있다. 그 폴더의 `AGENTS.md`가 문서 지도, 차수 폴더 규칙, 기록 규칙을, `history.md`가 옛 이름·branch → tag 대조를 정한다. 이 skill과 `references/`의 `aviron-skills/…` 경로는 sungmin 저장소 기준이다.
 
 ## 시작할 때
 
 `aviron-skills/AGENTS.md`, `aviron-skills/TODO.md`, 지금 차수 `aviron-skills/rounds/0NN/README.md`를 읽는다. 현재 기준(skills develop commit, tt-metal commit, 서버·run 상태)과 남은 할 일을 먼저 요약한다.
 
-**lean 파이프라인은 보류 중이다(11-25 사용자 지시).** 코드는 `bos-semi/aviron-skills` branch `lean-experimental`(`bos-semi/skills` `develop` `fcea958`의 사본), 문서와 기록은 sungmin `lean-skills/`에 있다. 사용자가 다시 꺼내기 전까지는 읽지도, 고치지도, run하지도 않고 다른 작업의 판단에도 넣지 않는다(aviron-skills 작업에서 "lean과 비교" 같은 제안도 하지 않는다). 다시 시작하면 `lean-skills/AGENTS.md`(재개 순서, lean 변경 기준)부터 읽는다.
 
 ## 작업별 문서
 
@@ -23,11 +22,11 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 | run 운영·감시(watcher) | [references/watcher.md](references/watcher.md) |
 | skills 플러그인의 지침·checker·runtime·러너 변경(검토사항·개선안·구현). 운영 문서만 고치는 일은 제외 | [references/change-gate.md](references/change-gate.md) |
 | 보드 전원: 스마트 플러그 명령(`plugstatus`·`plugon`·`plugoff`), myA0 장치 hang 때 전원 껐다 켜기·재부팅·재개, sudo 설정 | [references/power.md](references/power.md) |
-| 서버별 접속·경로·환경 | sungmin `aviron-skills/startingpoint.md` "서버" |
+| 서버별 접속·경로·환경 | sungmin `aviron-skills/TODO.md` "서버" |
 
 ## 환경 값
 
-이 skill과 `references/`의 명령은 아래 변수로 경로를 적는다. 값은 실행 서버 기준이다. 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에서 확인한다.
+이 skill과 `references/`의 명령은 아래 변수로 경로를 적는다. 값은 실행 서버 기준이다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에서 확인한다.
 
 | 변수 | 뜻 | 기본값 |
 |---|---|---|
@@ -41,7 +40,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 ## 정본 위치
 
 - 문서와 기록은 host sungmin에 쓴다. 코드 작업과 commit·push는 별도 지시가 없으면 실행 서버 `$REPO` 안의 저장소에서 직접 한다. skills는 `$REPO/aviron-skills`, 참조 aviron-transformers clone은 `$REPO/aviron-transformers`, tt-metal-e2는 `$REPO/tt-metal-e2`다.
-- skills 플러그인은 `aviron-model-bringup`(`bos-semi/aviron-skills`, plugin ID `aviron-model-bringup@aviron-skills`)이다. version `0.NN.x` = 차수 `0NN`이다. 저장소의 작업 branch는 `develop` 하나이고(보류 중인 lean의 `lean-experimental`은 무시한다) 버전은 tag `vX.Y.Z`로 구분한다. 지금 `develop`·tag·차수는 `aviron-skills/TODO.md`에, 옛 플러그인(`tt-model-bringup-a0`)과 branch 이력은 `aviron-skills/history.md`와 `aviron-skills/rounds/_legacy/`에 있다.
+- skills 플러그인은 `aviron-model-bringup`(`bos-semi/aviron-skills`, plugin ID `aviron-model-bringup@aviron-skills`)이다. version `0.NN.x` = 차수 `0NN`이다. 저장소의 작업 branch는 `develop` 하나이고 버전은 tag `vX.Y.Z`로 구분한다. 지금 `develop`·tag·차수는 `aviron-skills/TODO.md`에, 옛 플러그인(`tt-model-bringup-a0`)과 branch 이력은 `aviron-skills/history.md`와 `aviron-skills/rounds/_legacy/`에 있다.
 - skills 수정·시험·commit은 별도 clone이 아니라 실행 clone `$REPO/aviron-skills`에서 직접 한다. run 지침 변경은 `aviron-model-bringup` 플러그인에서만 한다.
 - **러너는 launch마다 고른다(`--runner deepagents|codex|claude`, 기본값 없음).** 사용자가 말하지 않았으면 묻는다. 러너를 바꾸려고 branch를 바꾸지 않는다. 러너별 입력·확인은 [references/run.md](references/run.md) "러너"에 있다.
 - **run 환경:** tt-metal-e2 checkout 하나(`$REPO/tt-metal-e2`, Python 3.12, DRAM 정렬 ON으로 빌드)와 uv 가상환경 하나(`$REPO/python_env`, Python 3.12)를 모든 러너가 함께 쓴다. 구축·재빌드 주의점은 [references/run.md](references/run.md) "run 환경"과 skills 루트 README "Build the run Python environment"에 있다.

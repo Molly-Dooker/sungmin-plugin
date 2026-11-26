@@ -28,7 +28,7 @@ sungmin-plugin/
 - 서버 이름과 절대 경로는 skill 본문에 적지 않는다. A0 경로는 `a0-bringup/SKILL.md` "환경 값" 표에만 기본값으로 두고, 본문 명령은 변수(`$REPO` 등)로 쓴다.
 - 같은 규칙은 한 곳에만 둔다. A0 공통 운영 규칙은 `a0-bringup/SKILL.md`다.
 - 버전 이력("0.NN부터", 옛 이름·경로)은 skill에 적지 않고 sungmin `aviron-skills/history.md`·`rounds/`에 둔다.
-- 문서 지도, 차수·단계 폴더 규칙, 기록 규칙, 옛 이름 대조처럼 문서 자체에 대한 규칙은 sungmin 각 폴더의 `AGENTS.md`에 둔다. 서버별 접속·경로·환경처럼 서버마다 바뀌는 사실은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 둔다. 운영 명령(상태 보기·멈추기·인증·참조·백업)은 `a0-bringup/references/run.md`에 둔다.
+- 문서 지도, 차수·단계 폴더 규칙, 기록 규칙, 옛 이름 대조처럼 문서 자체에 대한 규칙은 sungmin 각 폴더의 `AGENTS.md`에 둔다. 서버별 접속·경로·환경처럼 서버마다 바뀌는 사실은 sungmin `aviron-skills/TODO.md` "서버" 표에 둔다. 운영 명령(상태 보기·멈추기·인증·참조·백업)은 `a0-bringup/references/run.md`에 둔다.
 
 ## 설치
 
