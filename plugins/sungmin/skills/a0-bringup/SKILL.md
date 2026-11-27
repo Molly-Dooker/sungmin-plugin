@@ -5,7 +5,7 @@ description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플�
 
 # A0 모델 브링업
 
-BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.57.0), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0에 설치한 plugin(설치본)으로 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
+BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.57.1), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0에 설치한 plugin(설치본)으로 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
 
 운영 문서와 기록은 문서 저장소 sungmin의 `aviron-skills/`에 있다. 그 폴더의 `AGENTS.md`가 문서 지도, 차수 폴더 규칙, 기록 규칙을, `history.md`가 옛 이름·branch → tag 대조를 정한다. 이 skill과 `references/`의 `aviron-skills/…` 경로는 sungmin 저장소 기준이다.
 
@@ -52,7 +52,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 run 실행·감시·skills 변경에 모두 적용한다.
 
 - **run 중 설치본 고정:** run이 도는 동안에는 그 run의 설치본을 업데이트·재설치하지 않는다(marketplace update, plugin install·update·add 포함). 러너가 stage check마다 plugin tree를 시작 때와 비교해, 다르면 check 없이 멈춘다(`plugin-modified`). 재현은 임시 clone에서 한다.
-- **감독자 run:** aviron-skills skill `run --supervise`(`scripts/run_supervised`)로 띄운 run은 host 감독자가 장치 정지 때 전원 복구·재개를 한다. 그 run에는 watcher가 따로 전원 복구를 하지 않고 감독자 log와 unit을 본다(복구가 겹치면 안 된다).
+- **감독자 run:** aviron-skills skill `run --supervise`(`scripts/run_supervised`)로 띄운 run은 host 감독자가 장치 정지 때 전원 복구·재개를 한다. 감독자는 0.57.1부터 script가 스스로 host user unit(`bringup-supervisor-<시각>`, log `~/.local/state/aviron-bringup/<unit>.log`)으로 띄운다. 그 run에는 watcher가 따로 전원 복구를 하지 않고 감독자 log와 unit을 본다(복구가 겹치면 안 된다).
 - **장치 안전:** 장치 명령이 도는 중에는 러너를 멈추지 않는다. 장치 정지 절차는 [references/run.md](references/run.md) "멈추기"에 있다. 장치가 hang돼 더 쓸 수 없으면 myA0는 사용자에게 묻지 않고 [references/power.md](references/power.md) 절차(plugoff → 5초 → plugon → 5초 → `sudo reboot`)로 복구해 같은 run을 재개하고, 끝난 뒤 보고한다. 횟수 제한은 없다(11-26 사용자 지시). 다른 서버는 사용자에게 재부팅을 요청한다.
 - **운영자 메모:** `LAUNCH_NOTE`는 사용자가 지시하거나 허락할 때만 쓴다. 한 번 넣으면 그 뒤 모든 stage와 재개 objective에 붙고, 뗄 방법이 없다.
 - **산출물:** 기존 산출물은 `$BACKUP`에 불투명 이름(`a0bk_<시각>_<순번>.tgz`)으로 압축해 둔다. 끝난 run의 autoport는 측정 원자료(Tracy·profile CSV·텐서)를 빼고 압축·대조한 뒤 원본을 지운다([references/run.md](references/run.md) "산출물 백업"). 그 밖의 데이터 삭제와 skills·plugin push는 사용자 확인을 받는다.

@@ -2,7 +2,7 @@
 
 **별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** myA0에 설치한 `aviron-model-bringup` 설치본을 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에 있다.
 
-- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.57.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
+- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.57.1). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
 - 공통 운영 규칙(설치본 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md), myA0 hang 복구(보드 전원·재부팅)는 [power.md](power.md)에 있다.
 
 ```text
