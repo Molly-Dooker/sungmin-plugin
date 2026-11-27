@@ -2,7 +2,7 @@
 
 **별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** myA0에 설치한 `aviron-model-bringup` 설치본을 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에 있다.
 
-- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.56.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
+- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.57.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
 - 공통 운영 규칙(설치본 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md), myA0 hang 복구(보드 전원·재부팅)는 [power.md](power.md)에 있다.
 
 ```text
@@ -19,8 +19,7 @@ prepare refs (GPU host) -> precheck + devcheck -> start.sh --dry-run -> launch-u
 ```bash
 # start.sh [runner options]: new continuous run
 source <work>/launch.env
-unset AVIRON_BRINGUP_SERVING_HANDOFF AVIRON_BRINGUP_SERVING_CANDIDATE AUTOPORT_PRECISION_CONFIG LAUNCH_NOTE
-export AVIRON_BRINGUP_SERVING_STACK_MANIFEST=$STACK
+unset AVIRON_BRINGUP_SERVING_HANDOFF AVIRON_BRINGUP_SERVING_CANDIDATE AVIRON_BRINGUP_SERVING_STACK_MANIFEST AUTOPORT_PRECISION_CONFIG LAUNCH_NOTE
 cd $CHECKOUT && exec $SK/scripts/run_bringup --serving-after benchmark-candidates --max-batch <1|4> "$@"
 # resume.sh <run> <stage> [note|-]: same as start.sh plus `export RUN_DIR=$1 RESUME_STAGE=$2` (and LAUNCH_NOTE=$3 unless it is -)
 # resume-with.sh <run> '<JSON>': same as start.sh plus `--run-dir "$1" --resume-with "$2"`, with RUN_DIR and RESUME_STAGE unset
@@ -43,35 +42,15 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 ## stage
 
-| Stage | 이름 | 장치 | 비고 |
-|---:|---|:-:|---|
-| 0 | reference-selection | 없음 | HF 분석과 참조 선택, host에서 돈다 |
-| 1 | functional-decoder | 씀 | |
-| 2 | optimized-decoder | 씀 | |
-| 3 | full-model | 씀 | 통합, O0 anchor를 얼린다 |
-| 4 | full-model-candidates | 씀 | 후보·fidelity·handover. 그 전에 HF 참조 `ensure` |
-| 5 | optimized-full-model | 씀 | serving entry(품질 없음) |
-| 6 | benchmark-candidates | 씀 | MMLU·TTFT/TPS 보고, serving entry(품질). 그 전에 참조 `ensure` |
-| 7 | vllm | 씀 | serving(greedy만) |
-| 8 | optimized-vllm | 씀 | serving(greedy만) |
-
-- report run은 0~6이고 Stage 6 뒤 `await_selection`에서 기다린다. 연속 run은 Stage 6 보고 뒤 러너가 후보를 골라 7 → 8을 잇는다. `--serving-after`는 `benchmark-candidates`·`optimized-full-model` 두 이름만 받는다.
-- batch는 `--max-batch 1|4`(4면 capacity 1·4). 규칙은 plugin `skills/model-bringup/references/batch_contract.md`.
-- 상태의 원천은 `<run>/manifest.txt`, checkpoint는 `<run>/graph/checkpoint.sqlite`다.
+stage 0~8, report run(0~6, Stage 6 뒤 `await_selection`)과 연속 run(`--serving-after`)의 구분, `--max-batch`는 skills 루트 README "Running"과 plugin `skills/model-bringup/SKILL.md`가 원본이다. 상태의 원천은 `<run>/manifest.txt`, checkpoint는 `<run>/graph/checkpoint.sqlite`다.
 
 ## 러너
 
-`--runner deepagents|codex|claude`. **기본값이 없다**(빠지면 exit 2). 사용자가 말하지 않았으면 묻는다. 한 run은 한 러너이고 다른 러너로 재개하면 거부된다. 원본은 operator.md "Choose the runner".
+`--runner deepagents|codex|claude`. **기본값이 없다**(빠지면 exit 2). 사용자가 말하지 않았으면 묻는다. 한 run은 한 러너다. 러너별 준비물·기본 모델·옵션은 skills 루트 README 러너별 절과 operator.md "Choose the runner"가 원본이다. 여기에는 운영 값만 둔다.
 
-| | `deepagents` | `codex` | `claude` |
-|---|---|---|---|
-| stage 에이전트 | Deep Agents가 모델 API 직접 호출(모델 이름이 `claude-`면 Anthropic, 아니면 OpenAI) | Codex app-server goal | Claude Code CLI |
-| 실제 launch에 필요한 것 | `OPENAI_API_KEY`(Claude 모델이면 `ANTHROPIC_API_KEY`), `launch-unit.sh`를 부르는 셸에 | `CODEX_BIN`(실제 바이너리, shim 아님), plugin 설치·로그인된 Codex(`~/.codex`) | `CLAUDE_BIN=$HOME/.local/bin/claude`(비대화 ssh PATH에 없음), `~/.claude` 로그인 |
-| 러너가 스스로 하는 것 | API 오류 backoff. launch당 모델 호출 3000회면 `turn-failed`. 한도 대기·비용 상한 없음 | usage limit 대기, 일시적 turn 오류 대기, host 실패 뒤 1회 재개, checker 수정 | codex와 같음 |
-
-- 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
+- `launch.env`에서 `CODEX_MODEL`·`CODEX_EFFORT`는 unset한다(codex 러너가 먼저 읽는다).
+- codex: `CODEX_BIN`은 실제 바이너리(shim 아님), Codex home은 기본 `~/.codex` 하나(myA0에 plugin 설치·로그인 완료, 11-27). claude: `CLAUDE_BIN=$HOME/.local/bin/claude`(비대화 ssh PATH에 없음). deepagents: key를 `launch-unit.sh`를 부르는 셸에.
 - Codex·Claude Code 버전은 pin이 없다. launch마다 `codex_version`·`claude_version`이 manifest에 남는다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. Claude Code는 `autoUpdates: false`여도 run 도중 바뀔 수 있으니, 버전이 바뀌면 run 기록에 시각을 적는다.
-- **Codex home:** 기본 `~/.codex` 하나를 쓴다(myA0에 plugin 설치·로그인 완료, 11-27).
 
 ## 규칙
 
@@ -85,27 +64,13 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 ## 설치본
 
-myA0에는 skills clone이 없다. claude·deepagents 러너는 Claude Code 설치본, codex 러너는 Codex 설치본에서 띄운다. 설치·업데이트는 run 사이에만 한다.
-
-```bash
-# Claude Code: 설치
-claude plugin marketplace add git@github.com:bos-semi/aviron-skills.git
-claude plugin install aviron-model-bringup@aviron-skills
-# Claude Code: 업데이트(version이 같으면 plugin update는 옛 설치본을 그대로 둔다)
-claude plugin marketplace update aviron-skills
-claude plugin uninstall aviron-model-bringup@aviron-skills && claude plugin install aviron-model-bringup@aviron-skills
-
-# Codex: 설치와 업데이트
-codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git   # 처음 한 번
-codex plugin marketplace upgrade aviron-skills                            # 업데이트
-codex plugin add aviron-model-bringup@aviron-skills
-```
+myA0에는 skills clone이 없다. claude·deepagents 러너는 Claude Code 설치본, codex 러너는 Codex 설치본에서 띄운다. 설치·업데이트 명령은 skills 루트 README "Install the plugin"·"Update the plugin"이 원본이고, run 사이에만 한다.
 
 비대화 ssh 셸에는 `~/.local/bin`이 `PATH`에 없으니 `PATH=$HOME/.local/bin:$PATH`를 붙인다. 업데이트 뒤 marketplace checkout(Claude Code `~/.claude/plugins/marketplaces/aviron-skills`, Codex `~/.codex/.tmp/marketplaces/aviron-skills`)의 `git rev-parse HEAD`가 origin `develop`인지 본다. manifest `plugin_source_commit`은 Codex 설치본일 때만 채워진다.
 
 ## run 환경
 
-tt-metal-e2 checkout 하나와 uv 가상환경 하나로 모든 러너를 돌린다. 구축 원본은 skills 루트 README "Build the run Python environment"이고, 여기에는 운영에서 걸리는 점만 적는다.
+tt-metal-e2 checkout 하나와 uv 가상환경 하나로 모든 러너를 돌린다. 구축·재빌드(환경을 PATH 앞에, DRAM 정렬 ON)·`env_set.sh` 둘째 인자·`pyarrow` pin은 skills 루트 README "Build the run Python environment"가 원본이다.
 
 ```text
 $REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12, DRAM alignment ON
@@ -114,15 +79,8 @@ $REPO/python_env         uv venv --seed, Python 3.12 (runner packages, ttnn, ser
 ~/.codex/plugins/cache/aviron-skills/aviron-model-bringup/<version>    installed copy (codex)
 ```
 
-- **tt-metal-e2 재빌드:** 환경을 PATH 앞에 두고 DRAM 정렬을 켠다. `build_metal.sh`는 PATH의 `python3`로 `_ttnn.so`를 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다. 켜졌는지는 장치 log `DRAM large buffer alignment: 256 B`로 본다.
-  ```bash
-  cd $CHECKOUT && PATH=$REPO/python_env/bin:$PATH VIRTUAL_ENV=$REPO/python_env ./build_metal.sh --build-type Release --enable-dram-large-buffer-alignment
-  $PY -c 'import ttnn; ttnn.bos_quantize_fused'   # then devcheck (device smoke)
-  ```
-- **checkout 하나 = Python 하나:** `_ttnn.so` 이름에 Python 버전이 없다. 다른 버전이 필요하면 별도 checkout에서 빌드한다.
-- **`env_set.sh`:** venv 경로를 둘째 인자로 넘긴다(`source $CHECKOUT/env_set.sh bos $REPO/python_env`).
-- **uv:** `uv venv --seed`로 만든다(pip 필요). venv는 `~/.local/share/uv/python/`의 3.12를 가리키므로 그 폴더를 지우면 깨지고, uv로 patch를 올리면 interpreter도 바뀐다(재현성을 따질 때 `$PY -V` 기록).
-- **pin:** `pyarrow==25.0.1`(26은 lm_eval import를 깬다). 러너 package는 `requirements-da.txt`이고, launch마다 설치 버전을 pin과 대조해 다르면 거부한다.
+- **uv:** venv는 `~/.local/share/uv/python/`의 3.12를 가리키므로 그 폴더를 지우면 깨지고, uv로 patch를 올리면 interpreter도 바뀐다(재현성을 따질 때 `$PY -V` 기록).
+- 재빌드 뒤 `$PY -c 'import ttnn; ttnn.bos_quantize_fused'`와 devcheck(장치 smoke)를 본다.
 
 ## 운영 값
 
@@ -131,7 +89,6 @@ $REPO/python_env         uv venv --seed, Python 3.12 (runner packages, ttnn, ser
 | `CHECKOUT` | `$REPO/tt-metal-e2` |
 | `SK` | 러너의 설치본. claude·deepagents `$HOME/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>`, codex `$HOME/.codex/plugins/cache/aviron-skills/aviron-model-bringup/<version>` |
 | `PY` | `$REPO/python_env/bin/python` |
-| `STACK` | 이번 run용으로 새로 만든 serving stack manifest(`bringup/serving/stack-<date>-<tag>.json`) |
 | `HF_MODEL`, `MODEL_DIR` | `MODEL_DIR=models/autoports/<model ID 소문자, 영숫자 밖은 _>` |
 
 `launch.env`에 export할 것:
@@ -145,13 +102,12 @@ offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run
 
 ## HF 참조(GT)
 
-- 위치는 `$CHECKOUT/bringup/references/<org>/<model>/<revision>/`, 도구는 `$SK/scripts/prepare_references.py`(`check`·`ensure`) 하나다. 상세는 plugin `skills/full-model-candidates/references/reference_generation.md`.
-- **run 전에 GPU host에서 만든다.** run 안에서는 local only로 둬 GPU host 상태에 묶이지 않게 한다.
+- 위치·도구·러너가 Stage 3 뒤 `ensure`하는 동작은 operator.md "Before a run"과 plugin `skills/full-model-candidates/references/reference_generation.md`가 원본이다.
+- **run 전에 GPU host에서 만든다.** run 안에서는 local only(`AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1`)로 둬 GPU host 상태에 묶이지 않게 한다. local only에서 준비되지 않으면 Stage 4·6 전에 멈춘다(exit 8, `<run>/references.log`).
   ```bash
   cd $CHECKOUT && env -u AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY PYTHON_BIN=$PY python3 $SK/scripts/prepare_references.py ensure --hf-model $HF_MODEL
   ```
-- 장소는 GPU host → 로컬 GPU → CPU 순서다. GPU host는 git 추적 밖 `bringup/reference_hosts.local.md`의 ` ```json ` block(`{"hosts": [{"name", "ssh", "workdir", "python", "min_free_gb", "max_gpu_util"}]}`)에 적는다. 원격 venv는 `$PY`와 같은 Python·패키지 버전으로 만들고 끝나면 지운다.
-- 러너는 Stage 4·6 가운데 처음 도는 stage 앞에서 `ensure`를 부르고, 준비되지 않으면 그 stage 전에 멈춘다(exit 8, `<run>/references.log`).
+- GPU host는 git 추적 밖 `bringup/reference_hosts.local.md`에 적는다. 원격 venv는 `$PY`와 같은 Python·패키지 버전으로 만들고 끝나면 지운다.
 - `references environment: differs`는 기록만 한다. 보고서에 참조 생산 환경과 run 환경을 나란히 적는다.
 - HF cache에 `refs/main`이 없으면(revision 지정 다운로드) run 전에 pin한 revision으로 쓴다. CPU 참조 경로가 `refs/main == revision`을 요구한다.
 
@@ -173,7 +129,6 @@ ps -eo pid,etime,cmd | grep -E "[r]un_bringup|[r]un_device_command|[g]raph_contr
 fuser -v /dev/bos/0; cat /sys/module/bos/refcnt                # holder 없음, 0
 df -h $CHECKOUT
 $PY $SK/scripts/prepare_references.py check --python $PY --hf-model $HF_MODEL --model-dir $MODEL_DIR   # references ready
-$PY $SK/scripts/serving_stack.py --manifest $STACK --installed
 $CODEX_BIN login status                                        # codex 러너
 ```
 
@@ -282,12 +237,8 @@ wrapper가 `stop-device-work`(exit 126, 기한 종료 포함)로 끝났거나 wr
 ## 연속 run 후보와 serving stack
 
 - **후보:** 러너가 entry stage 뒤 operator.md "Continuous run" 규칙으로 고르고 사용자 승인을 묻지 않는다. 고정하려면 `AVIRON_BRINGUP_SERVING_CANDIDATE`.
-- **stack manifest는 run마다 새로 만든다.** 띄우기 직전 checkout으로, plugin checkout이 깨끗한지 확인한 뒤 만든다(남은 변경은 baseline이 된다). vLLM은 `python_env` 패키지로 기록된다.
-  ```bash
-  $PY $SK/scripts/serving_stack.py --create $CHECKOUT/bringup/serving/stack-<date>-<tag>.json \
-    --plugin $REPO/vllm-aviron-plugin --installed
-  ```
-- `serving-complete` 뒤 plugin checkout이 baseline과 다르면, autoport를 지우기 전에 `third_party_patches/plugin.diff`와 대조하고 사용자에게 알린다. vLLM core를 고쳐야 하면 고친 것을 설치하고 새 manifest를 만든다.
+- **stack manifest:** 0.57.0부터 러너가 새 launch마다 만들고 재개는 기록된 것을 쓴다(skills 루트 README "What Stages 7-8 need"). 띄우기 전에 `$REPO/vllm-aviron-plugin`이 깨끗한지만 본다(남은 변경은 baseline이 된다).
+- `serving-complete` 뒤 plugin checkout이 baseline과 다르면, autoport를 지우기 전에 `third_party_patches/plugin.diff`와 대조하고 사용자에게 알린다. vLLM core를 고쳐야 하면 고친 것을 설치하고 새 run을 띄운다.
 
 ## 산출물 백업
 
@@ -327,7 +278,4 @@ rm -rf models/autoports/<model_dir> && ls -la models/autoports
 
 ## 다른 모드(지시가 있을 때만)
 
-- **report run:** script에서 `--serving-after`를 뺀다. Stage 6 뒤 `awaiting-user-selection`. 고른 후보는 별도 serving run으로 띄운다.
-- **Stage 5에서 serving으로:** `--serving-after optimized-full-model`. MMLU가 없어 final default 품질 근거가 없다.
-- **Stage 0만:** `--selection-only`. **별도 serving run:** `--serving-only`, `AVIRON_BRINGUP_SERVING_HANDOFF=<handoff>`(`serving_handoff.py create`), 재개는 Stage 7·8. **대화형:** operator.md "Interactive run".
-- report run, serving run, 연속 run은 서로 재개할 수 없다.
+report run(`--serving-after` 없음), Stage 5에서 serving(`--serving-after optimized-full-model`, MMLU 없음), `--selection-only`, 별도 serving run(`--serving-only`), 대화형 run은 지시가 있을 때만 쓴다. 옵션은 skills 루트 README "Running", 절차는 operator.md다. report run, serving run, 연속 run은 서로 재개할 수 없다.
