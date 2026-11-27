@@ -66,7 +66,7 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 | | `deepagents` | `codex` | `claude` |
 |---|---|---|---|
 | stage 에이전트 | Deep Agents가 모델 API 직접 호출(모델 이름이 `claude-`면 Anthropic, 아니면 OpenAI) | Codex app-server goal | Claude Code CLI |
-| 실제 launch에 필요한 것 | `OPENAI_API_KEY`(Claude 모델이면 `ANTHROPIC_API_KEY`), `launch-unit.sh`를 부르는 셸에 | `CODEX_BIN`(실제 바이너리, shim 아님), plugin 설치·로그인된 `AVIRON_BRINGUP_CODEX_HOME` | `CLAUDE_BIN=$HOME/.local/bin/claude`(비대화 ssh PATH에 없음), `~/.claude` 로그인 |
+| 실제 launch에 필요한 것 | `OPENAI_API_KEY`(Claude 모델이면 `ANTHROPIC_API_KEY`), `launch-unit.sh`를 부르는 셸에 | `CODEX_BIN`(실제 바이너리, shim 아님), plugin 설치·로그인된 Codex(`~/.codex`) | `CLAUDE_BIN=$HOME/.local/bin/claude`(비대화 ssh PATH에 없음), `~/.claude` 로그인 |
 | 러너가 스스로 하는 것 | API 오류 backoff. launch당 모델 호출 3000회면 `turn-failed`. 한도 대기·비용 상한 없음 | usage limit 대기, 일시적 turn 오류 대기, host 실패 뒤 1회 재개, checker 수정 | codex와 같음 |
 
 - 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
