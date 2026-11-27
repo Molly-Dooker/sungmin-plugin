@@ -71,7 +71,7 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 - 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
 - Codex·Claude Code 버전은 pin이 없다. launch마다 `codex_version`·`claude_version`이 manifest에 남는다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. Claude Code는 `autoUpdates: false`여도 run 도중 바뀔 수 있으니, 버전이 바뀌면 run 기록에 시각을 적는다.
-- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 `mkdir -p ~/.codex2` 뒤 skills README "Install the plugin in Claude Code and Codex"대로 plugin을 설치·로그인한다.
+- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 run 전용 home을 만들고 설치·로그인한다(skills README "Install the plugin"은 기본 `~/.codex` 기준이라 `CODEX_HOME`을 붙인다): `mkdir -p ~/.codex2`, `CODEX_HOME=~/.codex2 codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git`, `CODEX_HOME=~/.codex2 codex plugin add aviron-model-bringup@aviron-skills`, `CODEX_HOME=~/.codex2 codex login`. launch에는 `AVIRON_BRINGUP_CODEX_HOME=~/.codex2`를 준다.
 
 ## 규칙
 
