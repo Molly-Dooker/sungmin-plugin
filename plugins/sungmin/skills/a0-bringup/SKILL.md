@@ -31,7 +31,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 | 변수 | 뜻 | 기본값 |
 |---|---|---|
 | `REPO` | aviron-skills, aviron-transformers, tt-metal-e2, vllm, vllm-aviron-plugin, python_env가 있는 폴더 | `/home/bos/repo` |
-| `CODEX_HOME` | run 전용 Codex home(`codex` 러너만). 11-27 기준 myA0에 없다: codex 러너 run 전에 만들고 plugin 설치·로그인한다 | `/home/bos/.codex2` |
+| `CODEX_HOME` | Codex home(`codex` 러너만). 따로 만들지 않고 기본값을 쓴다 | `/home/bos/.codex` |
 | `CODEX_BIN` | 실제 codex 바이너리(`codex` 러너만) | `/home/bos/.local/bin/codex` |
 | `WORK_ROOT` | run 작업 폴더의 상위 폴더 | `/home/bos/bt_work` |
 | `LIMITWATCH` | 리셋권 감시 상태 폴더(`codex` 러너만) | `/home/bos/a0_limitwatch_r0NN` |

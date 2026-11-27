@@ -71,7 +71,7 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 - 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
 - Codex·Claude Code 버전은 pin이 없다. launch마다 `codex_version`·`claude_version`이 manifest에 남는다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. Claude Code는 `autoUpdates: false`여도 run 도중 바뀔 수 있으니, 버전이 바뀌면 run 기록에 시각을 적는다.
-- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 `mkdir -p ~/.codex2` 뒤 아래 "설치본"대로 설치하고 `CODEX_HOME=~/.codex2 codex login`으로 로그인한다. launch에는 `AVIRON_BRINGUP_CODEX_HOME=~/.codex2`를 준다.
+- **Codex home:** 기본 `~/.codex` 하나를 쓴다(myA0에 plugin 설치·로그인 완료, 11-27).
 
 ## 규칙
 
@@ -85,7 +85,7 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 ## 설치본
 
-myA0에는 skills clone이 없다. claude·deepagents 러너는 Claude Code 설치본, codex 러너는 run 전용 Codex home(`$CODEX_HOME`)의 설치본에서 띄운다. 설치·업데이트는 run 사이에만 한다.
+myA0에는 skills clone이 없다. claude·deepagents 러너는 Claude Code 설치본, codex 러너는 Codex 설치본에서 띄운다. 설치·업데이트는 run 사이에만 한다.
 
 ```bash
 # Claude Code: 설치
@@ -95,10 +95,10 @@ claude plugin install aviron-model-bringup@aviron-skills
 claude plugin marketplace update aviron-skills
 claude plugin uninstall aviron-model-bringup@aviron-skills && claude plugin install aviron-model-bringup@aviron-skills
 
-# Codex(run 전용 home): 설치와 업데이트
-CODEX_HOME=$CODEX_HOME codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git   # 처음 한 번
-CODEX_HOME=$CODEX_HOME codex plugin marketplace upgrade aviron-skills                            # 업데이트
-CODEX_HOME=$CODEX_HOME codex plugin add aviron-model-bringup@aviron-skills
+# Codex: 설치와 업데이트
+codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git   # 처음 한 번
+codex plugin marketplace upgrade aviron-skills                            # 업데이트
+codex plugin add aviron-model-bringup@aviron-skills
 ```
 
 비대화 ssh 셸에는 `~/.local/bin`이 `PATH`에 없으니 `PATH=$HOME/.local/bin:$PATH`를 붙인다. 업데이트 뒤 dry-run manifest의 `plugin_source_commit`이 origin `develop`인지 본다.
@@ -111,7 +111,7 @@ tt-metal-e2 checkout 하나와 uv 가상환경 하나로 모든 러너를 돌린
 $REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12, DRAM alignment ON
 $REPO/python_env         uv venv --seed, Python 3.12 (runner packages, ttnn, serving stack, lm_eval, tt_transformers pin)
 ~/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>   installed copy (claude, deepagents)
-$CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>  installed copy (codex)
+~/.codex/plugins/cache/aviron-skills/aviron-model-bringup/<version>    installed copy (codex)
 ```
 
 - **tt-metal-e2 재빌드:** 환경을 PATH 앞에 두고 DRAM 정렬을 켠다. `build_metal.sh`는 PATH의 `python3`로 `_ttnn.so`를 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다. 켜졌는지는 장치 log `DRAM large buffer alignment: 256 B`로 본다.
@@ -129,7 +129,7 @@ $CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>  installe
 | 변수 | 값 |
 |---|---|
 | `CHECKOUT` | `$REPO/tt-metal-e2` |
-| `SK` | 러너의 설치본. claude·deepagents `$HOME/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>`, codex `$CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>` |
+| `SK` | 러너의 설치본. claude·deepagents `$HOME/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>`, codex `$HOME/.codex/plugins/cache/aviron-skills/aviron-model-bringup/<version>` |
 | `PY` | `$REPO/python_env/bin/python` |
 | `STACK` | 이번 run용으로 새로 만든 serving stack manifest(`bringup/serving/stack-<date>-<tag>.json`) |
 | `HF_MODEL`, `MODEL_DIR` | `MODEL_DIR=models/autoports/<model ID 소문자, 영숫자 밖은 _>` |
@@ -137,7 +137,7 @@ $CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>  installe
 `launch.env`에 export할 것:
 
 - 늘: `AVIRON_BRINGUP_REFERENCE_LOCAL_ONLY=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, `MODEL_DIR=...`, 모델 설정(`AGENT_MODEL` 등, 기본이면 생략)
-- codex: `CODEX_BIN=<CODEX_BIN>`, `AVIRON_BRINGUP_CODEX_HOME=<CODEX_HOME>`
+- codex: `CODEX_BIN=<CODEX_BIN>`
 - claude: `CLAUDE_BIN=$HOME/.local/bin/claude`
 - 장치가 여럿인 서버(AI001): `TT_VISIBLE_DEVICES=0`
 
@@ -173,7 +173,7 @@ fuser -v /dev/bos/0; cat /sys/module/bos/refcnt                # holder 없음, 
 df -h $CHECKOUT
 $PY $SK/scripts/prepare_references.py check --python $PY --hf-model $HF_MODEL --model-dir $MODEL_DIR   # references ready
 $PY $SK/scripts/serving_stack.py --manifest $STACK --installed
-CODEX_HOME=$CODEX_HOME $CODEX_BIN login status                 # codex 러너
+$CODEX_BIN login status                                        # codex 러너
 ```
 
 - **프로세스 확인:** `pgrep -f`는 쓰지 않는다. ssh 명령줄에 패턴이 들어가 원격 셸을 찾는다. `grep "[r]un_…"`처럼 괄호를 넣고, 같은 ssh 명령에 괄호 없는 이름을 함께 적지 않는다.
@@ -213,8 +213,8 @@ run 감시와 hang 판정은 host의 watcher가 ssh로 "상태 보기"를 읽어
 - **사용량(claude만):** 러너에 계정 사용량 감시가 없다. stage log(`<run>/*.jsonl`)의 `rate_limit_event`(`five_hour`·`seven_day` utilization·status)를 보면 된다. 한도 대기는 러너가 한다. 옛 `claude_usage_watch.py`는 11-25에 지워졌다.
 - **리셋권(codex만):** myA0 `/home/bos/a0_limitwatch_r053r4_llama3b/codex_limit_watch.py`를 `$LIMITWATCH`로 복사한다. 띄우기 전에 `--read-now`로 사용량·reset 시각·리셋권을 기록한다. 99% 이상·한도 도달·usage-limit 대기면 리셋권을 한 번 쓴다. 같은 계정 감시는 한 서버에만 둔다. 리셋권이 0이면 99%에서 사용자에게 알린다.
   ```bash
-  systemd-run --user --unit=codex2-reset-watch-r0NN-<model> ... $PY codex_limit_watch.py --codex-home $CODEX_HOME \
-    --state-dir $LIMITWATCH/codex2 --threshold 99 --interval 300 --manifest <run>/manifest.txt --unit <run unit>
+  systemd-run --user --unit=codex-reset-watch-r0NN-<model> ... $PY codex_limit_watch.py --codex-home $HOME/.codex \
+    --state-dir $LIMITWATCH/codex --threshold 99 --interval 300 --manifest <run>/manifest.txt --unit <run unit>
   ```
 
 ## 상태 보기
@@ -222,7 +222,7 @@ run 감시와 hang 판정은 host의 watcher가 ssh로 "상태 보기"를 읽어
 host에서 `ssh <서버> '…'`로 본다. 촘촘히 반복하지 않는다(몇 분 간격).
 
 ```bash
-systemctl --user list-units --no-legend 'bringup-*' 'costguard-*' 'codex2-*'
+systemctl --user list-units --no-legend 'bringup-*' 'costguard-*' 'codex-reset-*'
 tail -3 $CHECKOUT/bringup/runner-logs/<unit>.log
 tail -5 <run>/manifest.txt                      # run_status, stop_stage, stop_reason
 cat <run>/wrappers/status.json                  # drained, blocking
@@ -271,10 +271,10 @@ wrapper가 `stop-device-work`(exit 126, 기한 종료 포함)로 끝났거나 wr
 
 ## 인증이 풀렸을 때
 
-- **codex:** goal이 `blocked`여도 `codex login status`는 정상일 수 있다. thread 세션 기록에서 본다. `unauthorized`면 `CODEX_HOME=$CODEX_HOME $CODEX_BIN login` 뒤 같은 세션을 잇는다.
+- **codex:** goal이 `blocked`여도 `codex login status`는 정상일 수 있다. thread 세션 기록에서 본다. `unauthorized`면 `$CODEX_BIN login` 뒤 같은 세션을 잇는다.
   ```bash
   T=$(grep -E "^stage_[0-9]+(_resume_[0-9]+)?_thread_id=" <run>/manifest.txt | tail -1 | cut -d= -f2)
-  grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $CODEX_HOME/sessions/*/*/*/rollout-*${T}.jsonl | head -1) | tail -1
+  grep -a -o '"codex_error_info": *"[^"]*"' $(ls -t $HOME/.codex/sessions/*/*/*/rollout-*${T}.jsonl | head -1) | tail -1
   ```
 - **deepagents:** 인증은 API key 하나다. 오류가 이어지면 `turn-failed`로 끝나고 문장이 manifest `stage_N_turn_error`에 남는다. key·계정 문제면 key를 바로잡고 `resume.sh`로 잇는다. 한도·잔액 부족 때의 대응은 정해지지 않았다.
 
