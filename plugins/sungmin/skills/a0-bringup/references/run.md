@@ -1,8 +1,8 @@
 # run 실행
 
-**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 `aviron-model-bringup`을 clone 모드로 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/startingpoint.md` "서버" 표에 있다.
+**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 `aviron-model-bringup`을 clone 모드로 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에 있다.
 
-- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.55.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
+- **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.56.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
 - 공통 운영 규칙(실행 clone 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md), myA0 hang 복구(보드 전원·재부팅)는 [power.md](power.md)에 있다.
 
 ```text
@@ -71,7 +71,7 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 - 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
 - Codex·Claude Code 버전은 pin이 없다. launch마다 `codex_version`·`claude_version`이 manifest에 남는다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. Claude Code는 `autoUpdates: false`여도 run 도중 바뀔 수 있으니, 버전이 바뀌면 run 기록에 시각을 적는다.
-- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. myA0 Codex home 셋은 11-25에 plugin을 지웠으니 codex 러너 run 전에 다시 설치한다.
+- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 `mkdir -p ~/.codex2` 뒤 skills README "Install the plugin in Claude Code and Codex"대로 plugin을 설치·로그인한다.
 
 ## 규칙
 

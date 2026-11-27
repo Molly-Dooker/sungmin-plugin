@@ -5,7 +5,7 @@ description: BOS N1 A0 모델 브링업(aviron-skills, aviron-model-bringup 플�
 
 # A0 모델 브링업
 
-BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.55.0), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0의 실행 clone에서 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
+BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 에이전트는 launch마다 `deepagents`·`codex`·`claude` 가운데 고른다)로 bring-up하는 작업의 입구다. run 명령과 러너 동작의 원본은 aviron-skills plugin의 operator.md이고(skills 0.56.0), 이 skill은 sungmin 운영 값·작업 폴더 script·판단·기록 규칙과 myA0 전원 복구를 더한다. run은 myA0의 실행 clone에서 돌리고 host가 감시하며, 장치가 hang되면 host가 묻지 않고 전원 복구 절차로 myA0를 되살려 같은 run을 재개한다.
 
 운영 문서와 기록은 문서 저장소 sungmin의 `aviron-skills/`에 있다. 그 폴더의 `AGENTS.md`가 문서 지도, 차수 폴더 규칙, 기록 규칙을, `history.md`가 옛 이름·branch → tag 대조를 정한다. 이 skill과 `references/`의 `aviron-skills/…` 경로는 sungmin 저장소 기준이다.
 
@@ -31,7 +31,7 @@ BOS N1 A0 단일 장치에서 HF 모델을 에이전트(LangGraph 러너; stage 
 | 변수 | 뜻 | 기본값 |
 |---|---|---|
 | `REPO` | aviron-skills, aviron-transformers, tt-metal-e2, vllm, vllm-aviron-plugin, python_env가 있는 폴더 | `/home/bos/repo` |
-| `CODEX_HOME` | run 전용 Codex home(`codex` 러너만) | `/home/bos/.codex2` |
+| `CODEX_HOME` | run 전용 Codex home(`codex` 러너만). 11-27 기준 myA0에 없다: codex 러너 run 전에 만들고 plugin 설치·로그인한다 | `/home/bos/.codex2` |
 | `CODEX_BIN` | 실제 codex 바이너리(`codex` 러너만) | `/home/bos/.local/bin/codex` |
 | `WORK_ROOT` | run 작업 폴더의 상위 폴더 | `/home/bos/bt_work` |
 | `LIMITWATCH` | 리셋권 감시 상태 폴더(`codex` 러너만) | `/home/bos/a0_limitwatch_r0NN` |
