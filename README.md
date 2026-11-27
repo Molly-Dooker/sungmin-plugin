@@ -48,7 +48,25 @@ codex plugin marketplace add Molly-Dooker/sungmin-plugin
 codex plugin add sungmin@sungmin-plugin
 ```
 
-upstream에 push된 새 버전은 `claude plugin marketplace update sungmin-plugin` 뒤 `claude plugin update sungmin@sungmin-plugin`으로 받는다. 설치 뒤 Claude Code에서는 `/sungmin:<skill>`(예: `/sungmin:a0-bringup`)로 직접 부를 수 있다.
+## 업데이트
+
+upstream에 push된 새 버전(`version`이 오른 것)을 받는다.
+
+Claude Code:
+
+```bash
+claude plugin marketplace update sungmin-plugin
+claude plugin update sungmin@sungmin-plugin
+```
+
+Codex:
+
+```bash
+codex plugin marketplace upgrade sungmin-plugin
+codex plugin add sungmin@sungmin-plugin
+```
+
+설치 뒤 Claude Code에서는 `/sungmin:<skill>`(예: `/sungmin:a0-bringup`)로 직접 부를 수 있다.
 
 ## 버전
 

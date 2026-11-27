@@ -91,9 +91,9 @@ event --> device stop? --yes--> no reopen, preserve; myA0: power cycle + reboot 
 - **모델 API 오류·호출 상한(deepagents 러너)**: runner가 API 오류를 backoff로 재시도하지만 자동 재개는 없다. `stop_reason=turn-failed`(exit 5)로 끝나면 `stage_N_turn_error`를 읽는다. 일시적 오류나 호출 상한이면 `resume.sh`로 같은 thread를 잇는다. key·계정 문제면 [run.md](run.md) "인증이 풀렸을 때"를 따른다. 같은 오류가 재개 뒤에도 나면 되풀이하지 않고 사용자에게 알린다(한도·잔액 대응은 정해지지 않음).
 - **리뷰 stale로 정지(`stop_reason=review-critical-fail`, `stage_N_review=critical-fail:review source/config/reference identity is stale`)**: stage check는 통과했고 clean-pass 뒤 에이전트가 autoport의 `.py`·`.json`을 바꾼 것이다(장치 명령의 wrapper 기록 포함). 장치 정지가 아니다. holder·refcnt 0을 확인하고 `resume.sh <run> <N> -`로 같은 thread를 메모 없이 재개하면 에이전트가 리뷰를 다시 받는다.
 - **에이전트가 질문·결정 요청으로 blocked**: 권장안을 정하고, 사용자 답을 기다리지 않는다. 기본은 원인(지침·환경)을 고쳐 같은 run·Stage·thread를 메모 없이 재개하는 것이다(러너가 정지 이유를 싣는다). 고칠 수 없으면 그 Stage부터 새 세션을 시작한다. 메모는 사용자가 이미 허락했을 때만 쓴다. 그때는 active wrapper 0과 holder 0을 확인하고, unit이 살아 있으면 멈춘 뒤, 같은 run·Stage·thread를 메모와 함께 재개한다.
-- **에이전트가 skills(checker·지침·runner) 결함으로 blocked**: 실행 clone은 run 중 고정이다([../SKILL.md](../SKILL.md) "공통 운영 규칙").
+- **에이전트가 skills(checker·지침·runner) 결함으로 blocked**: 설치본은 run 중 고정이다([../SKILL.md](../SKILL.md) "공통 운영 규칙").
   - 메모로 우회할 수 있고 사용자가 메모를 허락하면 우회하고, 고치는 것은 run 뒤에 한다.
-  - 꼭 고쳐야 진행되면 장치 명령이 없을 때 runner를 멈춘다. 실행 clone에 commit하고, 그 Stage부터 새 세션을 시작한다(끝난 Stage는 `--skip-stage`).
+  - 꼭 고쳐야 진행되면 장치 명령이 없을 때 runner를 멈춘다. host clone에서 고쳐 commit·push(사용자 확인)하고 설치본을 업데이트한 뒤, 그 Stage부터 새 세션을 시작한다(끝난 Stage는 `--skip-stage`).
 - **runner·환경 문제**(패키지, 참조, 디스크, 인증): 원인을 고치고 같은 run을 재개한다.
 - **controller crash·재개 거부**: unit이 기록 없이 죽었으면 `resume.sh`로 재개한다(checkpoint 단계부터 이어 감). `stop_reason=graph-reconcile:<node>`(exit 3)는 러너가 반쯤 끝난 단계(wrapper 등록 없는 장치 명령 receipt; codex 러너는 remediation·checker fix 중에 죽은 것도)를 판단하지 못한 것이니 stage 기록을 보고 hold 인터럽트에 답한다: `resume-with.sh <run> '{"decision":"resume"}'`(`resume.sh` 재개는 거부된다). exit 1 재개 거부(schema·manifest·다른 minor version으로 시작한 run·manifest와 다른 러너·`RESUME_STAGE`·인터럽트에서 기다리는 run의 `resume.sh` 재개·payload와 맞지 않는 `--resume-with`)는 메시지를 읽고 원인을 고친 뒤 띄운다. 자동으로 반복하지 않는다. 인증은 [run.md](run.md) "인증이 풀렸을 때"를 따른다.
 - 같은 실패를 설정 변경 없이 되풀이시키지 않는다.
@@ -112,7 +112,7 @@ event --> device stop? --yes--> no reopen, preserve; myA0: power cycle + reboot 
 ## 끝나면
 
 1. 종료 상태를 확인한다. 마지막 `run_status`(`serving-complete` 또는 `awaiting-user-selection`), unit 결과, holder 0을 본다. 중간에 멈춘 run도 `run_status`(`stopped`+`stop_stage`+`stop_reason`, `stop-device-work`, `scope-concluded`)를 남긴다(판독은 플러그인 operator.md "Continuous run"·"What the runner does on its own").
-2. run 동안 보류했던 skills 반영을 한다. 실행 clone에서 고치고 시험한 뒤 commit한다(push는 사용자 확인).
+2. run 동안 보류했던 skills 반영을 한다. host clone에서 고치고 myA0 임시 clone에서 시험한 뒤 commit한다(push는 사용자 확인).
 3. 보고한다.
    - Stage별 시간
    - Stage 6 6길이 TTFT/TPS

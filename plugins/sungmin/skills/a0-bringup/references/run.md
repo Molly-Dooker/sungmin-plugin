@@ -1,9 +1,9 @@
 # run 실행
 
-**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** 실행 clone의 `aviron-model-bringup`을 clone 모드로 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에 있다.
+**별도 지시가 없으면 A0 bring-up run은 이 방식으로 돌린다.** myA0에 설치한 `aviron-model-bringup` 설치본을 쓰고, 작업 폴더 script로 러너(`scripts/run_bringup`)를 user systemd unit으로 띄워 Stage 0 → 8을 연속 run(`--serving-after benchmark-candidates`)으로 끝까지 돈다. run은 실행 서버(myA0)에서 돌고 host가 ssh로 감시한다. myA0 장치가 hang되면 host가 묻지 않고 [power.md](power.md) 절차로 복구해 같은 run을 재개한다. 서버별 값은 sungmin `aviron-skills/TODO.md` "서버" 표에 있다.
 
 - **원본:** 명령과 러너 동작은 plugin `skills/model-bringup/references/operator.md`다(skills 0.56.0). 이 문서는 운영 값, 작업 폴더 script, 장치 안전 절차를 더한다. 둘이 다르면 plugin을 따르고 이 문서를 고친다.
-- 공통 운영 규칙(실행 clone 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md), myA0 hang 복구(보드 전원·재부팅)는 [power.md](power.md)에 있다.
+- 공통 운영 규칙(설치본 고정, 장치 안전, `LAUNCH_NOTE`, 백업)은 [../SKILL.md](../SKILL.md), 감시·복구 판단은 [watcher.md](watcher.md), myA0 hang 복구(보드 전원·재부팅)는 [power.md](power.md)에 있다.
 
 ```text
 prepare refs (GPU host) -> precheck + devcheck -> start.sh --dry-run -> launch-unit.sh start.sh + watch units
@@ -71,17 +71,37 @@ if [ "$AVIRON_BRINGUP_RUNNER" = deepagents ]; then systemctl --user unset-enviro
 
 - 모델 설정은 `AGENT_MODEL`·`AGENT_EFFORT`·`REVIEW_MODEL`·`REVIEW_EFFORT`다(codex는 `CODEX_MODEL`·`CODEX_EFFORT`를 먼저 읽으니 unset). deepagents 기본은 `gpt-6.2-sol`/`gpt-6.2-astra` medium, `AGENT_MODEL=claude-sonnet-5-5`면 나머지 기본이 `medium`·`claude-opus-5-5`·`medium`이다. claude 러너 기본은 `claude-sonnet-5-5`·리뷰 `claude-opus-5-5`, medium.
 - Codex·Claude Code 버전은 pin이 없다. launch마다 `codex_version`·`claude_version`이 manifest에 남는다. 업데이트 뒤 첫 run은 그 버전에서 검증되지 않은 것으로 본다. Claude Code는 `autoUpdates: false`여도 run 도중 바뀔 수 있으니, 버전이 바뀌면 run 기록에 시각을 적는다.
-- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 run 전용 home을 만들고 설치·로그인한다(skills README "Install the plugin"은 기본 `~/.codex` 기준이라 `CODEX_HOME`을 붙인다): `mkdir -p ~/.codex2`, `CODEX_HOME=~/.codex2 codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git`, `CODEX_HOME=~/.codex2 codex plugin add aviron-model-bringup@aviron-skills`, `CODEX_HOME=~/.codex2 codex login`. launch에는 `AVIRON_BRINGUP_CODEX_HOME=~/.codex2`를 준다.
+- **Codex home:** run 동안 러너만 쓴다. VS Code 확장·다른 app-server가 같은 home을 쓰면 토큰 갱신이 401을 낸다. 11-27 기준 myA0에는 `~/.codex`만 있고(다른 app-server가 쓴다) run 전용 `~/.codex2`는 없다. codex 러너 run 전에 `mkdir -p ~/.codex2` 뒤 아래 "설치본"대로 설치하고 `CODEX_HOME=~/.codex2 codex login`으로 로그인한다. launch에는 `AVIRON_BRINGUP_CODEX_HOME=~/.codex2`를 준다.
 
 ## 규칙
 
 - **버전 경계:** 한 run은 한 minor로 시작하고 재개한다. 다른 minor로 시작한 run은 그 minor의 재개 tag clone으로만 재개한다(plugin `EARLIER_RELEASES`·README). patch는 같은 minor를 재개한다.
 - **참조 설치:** `python_env`에는 참조 `tt_transformers`가 pin 하나만 설치된다. 러너가 설치 hash를 `PIN_SOURCE_HASH`와 대조해 다르면 멈춘다. 다른 version으로 돌리려면 그 pin을 다시 설치한다(skills 루트 README "Build the run Python environment").
 - **run 중 시험:** run이 도는 서버에서 skills `tests/` 전체를 돌리지 않는다. `tests/test_device_command.py`가 run과 같은 host 잠금을 잡아 run의 장치 명령이 exit 125로 거절된다. 장치 wrapper를 쓰지 않는 시험만 돌리거나 run 뒤에 돌린다. subagent에 맡길 때도 이렇게 적는다.
-- **플러그인 모드:** clone 모드. 설치본 모드는 사용자가 지시할 때만, clone + snapshot(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)은 쓰지 않는다.
+- **플러그인 모드:** 설치본 모드(11-27). clone 모드는 push 전 skills 변경을 run으로 시험할 때만 임시 clone으로 쓰고, clone + snapshot(`AVIRON_BRINGUP_CHECKOUT_SNAPSHOT=1`)은 쓰지 않는다.
 - **환경 변수:** 옛 `BOS_BRINGUP_*`가 하나라도 있으면 러너가 거부한다(exit 2).
 - **성능 잡음:** tt-metal-e2를 DRAM 정렬 없이 빌드하면 decode가 weight 시작 주소에 따라 3~4% 오간다(sungmin `aviron-skills/rounds/054/조사/dram_배치_랜덤성_검토_20261124.md`). 정렬 없는 빌드의 측정과 비교해 skills 변경 효과로 판단하지 않는다.
 - **호스트 메모리:** A0에 TT 모델이 올라가 있거나 장치 명령이 도는 중이면 HF 모델을 올리지 않는다.
+
+## 설치본
+
+myA0에는 skills clone이 없다. claude·deepagents 러너는 Claude Code 설치본, codex 러너는 run 전용 Codex home(`$CODEX_HOME`)의 설치본에서 띄운다. 설치·업데이트는 run 사이에만 한다.
+
+```bash
+# Claude Code: 설치
+claude plugin marketplace add git@github.com:bos-semi/aviron-skills.git
+claude plugin install aviron-model-bringup@aviron-skills
+# Claude Code: 업데이트(version이 같으면 plugin update는 옛 설치본을 그대로 둔다)
+claude plugin marketplace update aviron-skills
+claude plugin uninstall aviron-model-bringup@aviron-skills && claude plugin install aviron-model-bringup@aviron-skills
+
+# Codex(run 전용 home): 설치와 업데이트
+CODEX_HOME=$CODEX_HOME codex plugin marketplace add git@github.com:bos-semi/aviron-skills.git   # 처음 한 번
+CODEX_HOME=$CODEX_HOME codex plugin marketplace upgrade aviron-skills                            # 업데이트
+CODEX_HOME=$CODEX_HOME codex plugin add aviron-model-bringup@aviron-skills
+```
+
+비대화 ssh 셸에는 `~/.local/bin`이 `PATH`에 없으니 `PATH=$HOME/.local/bin:$PATH`를 붙인다. 업데이트 뒤 dry-run manifest의 `plugin_source_commit`이 origin `develop`인지 본다.
 
 ## run 환경
 
@@ -90,7 +110,8 @@ tt-metal-e2 checkout 하나와 uv 가상환경 하나로 모든 러너를 돌린
 ```text
 $REPO/tt-metal-e2        one checkout, built with python_env's Python 3.12, DRAM alignment ON
 $REPO/python_env         uv venv --seed, Python 3.12 (runner packages, ttnn, serving stack, lm_eval, tt_transformers pin)
-$REPO/aviron-skills      execution clone: develop
+~/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>   installed copy (claude, deepagents)
+$CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>  installed copy (codex)
 ```
 
 - **tt-metal-e2 재빌드:** 환경을 PATH 앞에 두고 DRAM 정렬을 켠다. `build_metal.sh`는 PATH의 `python3`로 `_ttnn.so`를 만들어서, 그냥 돌리면 시스템 3.10 binding이 나와 `python_env`가 깨진다. 켜졌는지는 장치 log `DRAM large buffer alignment: 256 B`로 본다.
@@ -108,7 +129,7 @@ $REPO/aviron-skills      execution clone: develop
 | 변수 | 값 |
 |---|---|
 | `CHECKOUT` | `$REPO/tt-metal-e2` |
-| `SK` | `$REPO/aviron-skills/plugins/aviron-model-bringup` |
+| `SK` | 러너의 설치본. claude·deepagents `$HOME/.claude/plugins/cache/aviron-skills/aviron-model-bringup/<version>`, codex `$CODEX_HOME/plugins/cache/aviron-skills/aviron-model-bringup/<version>` |
 | `PY` | `$REPO/python_env/bin/python` |
 | `STACK` | 이번 run용으로 새로 만든 serving stack manifest(`bringup/serving/stack-<date>-<tag>.json`) |
 | `HF_MODEL`, `MODEL_DIR` | `MODEL_DIR=models/autoports/<model ID 소문자, 영숫자 밖은 _>` |
@@ -138,8 +159,8 @@ offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run
 
 ```bash
 env | grep '^BOS_BRINGUP_'                                     # 없어야 한다
-git -C $REPO/aviron-skills status --porcelain -- plugins/aviron-model-bringup   # 비어 있어야 한다
-git -C $REPO/aviron-skills rev-parse HEAD origin/develop <tag>^{commit}      # 같아야 한다
+ls $SK/scripts/run_bringup                                     # 설치본이 있어야 한다
+git ls-remote git@github.com:bos-semi/aviron-skills.git develop   # dry-run manifest plugin_source_commit과 같아야 한다
 $PY -V                                                         # Python 3.12.x
 $PY -c 'import tt_transformers, ttnn; print(tt_transformers.__file__, ttnn.__file__)'   # python_env site-packages, $CHECKOUT/ttnn/ttnn
 $PY $SK/scripts/reference_source.py                            # 오류 없이 pin commit
@@ -172,7 +193,7 @@ CODEX_HOME=$CODEX_HOME $CODEX_BIN login status                 # codex 러너
   ```
 - 볼 값:
   - `runner=`, 러너별 줄(deepagents `model_api`·`deepagents_version`, codex `codex_home`·`codex_bin`·`codex_version`, claude `claude_bin`·`claude_version`·`claude_auth`)
-  - `plugin_mode=clone`, `plugin_version`·`plugin_revision`이 실행 clone, `reference_commit`이 pin, `reference_source_hash` 있음
+  - `plugin_mode=installed`, `plugin_root`가 러너의 설치본, `plugin_source_commit`이 origin `develop`, `reference_commit`이 pin, `reference_source_hash` 있음
   - `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`, `device_stop_verifier=all`, `launch_note` 없음
   - `tooling_status`의 device_profiler·perf_report available, `stage_0_dry_run`~`stage_8_dry_run=true`
 - 시작은 `launch-unit.sh <unit> <work>/start.sh`다. unit 이름과 새 run 폴더를 작업 폴더 `unit.txt`·`run.txt`에 적는다. 시작 뒤 `systemctl --user is-active <unit>`과 manifest `graph_launch=fresh`·`stage_0_thread_id`를 본다.
@@ -219,7 +240,7 @@ ps -eo etime,cmd | grep "[r]un_device_command.py"
 
 | 방식 | 언제 | 명령 |
 |---|---|---|
-| 같은 세션 | 인터럽트 없는 정지(실행 clone 그대로) | `resume.sh <run> <N> -` |
+| 같은 세션 | 인터럽트 없는 정지(설치본 그대로) | `resume.sh <run> <N> -` |
 | 인터럽트 답 | 장치 정지(exit 126, `await_ack`), hold(exit 3, `graph-reconcile:<node>`, `await_hold`), report 끝(`await_selection`) | `resume-with.sh <run> '<JSON>'`. 장치 정지 `{"decision":"verified-resume","note":"<누구, 언제, verifier 통과 또는 재부팅>"}`, hold `{"decision":"resume"}`, report 끝 `{"decision":"resume","stage":<N>}`, 그만두기 `{"decision":"stop"}` |
 | 새 세션 | plugin을 바꿨을 때, 러너나 Codex 계정을 바꿀 때 | `start.sh --skip-stage …` |
 
