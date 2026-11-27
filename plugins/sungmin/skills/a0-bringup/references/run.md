@@ -101,7 +101,7 @@ codex plugin marketplace upgrade aviron-skills                            # 업�
 codex plugin add aviron-model-bringup@aviron-skills
 ```
 
-비대화 ssh 셸에는 `~/.local/bin`이 `PATH`에 없으니 `PATH=$HOME/.local/bin:$PATH`를 붙인다. 업데이트 뒤 dry-run manifest의 `plugin_source_commit`이 origin `develop`인지 본다.
+비대화 ssh 셸에는 `~/.local/bin`이 `PATH`에 없으니 `PATH=$HOME/.local/bin:$PATH`를 붙인다. 업데이트 뒤 marketplace checkout(Claude Code `~/.claude/plugins/marketplaces/aviron-skills`, Codex `~/.codex/.tmp/marketplaces/aviron-skills`)의 `git rev-parse HEAD`가 origin `develop`인지 본다. manifest `plugin_source_commit`은 Codex 설치본일 때만 채워진다.
 
 ## run 환경
 
@@ -160,7 +160,8 @@ offline·local only이므로 HF checkpoint, HF 참조, MMLU dataset cache는 run
 ```bash
 env | grep '^BOS_BRINGUP_'                                     # 없어야 한다
 ls $SK/scripts/run_bringup                                     # 설치본이 있어야 한다
-git ls-remote git@github.com:bos-semi/aviron-skills.git develop   # dry-run manifest plugin_source_commit과 같아야 한다
+git ls-remote git@github.com:bos-semi/aviron-skills.git develop   # 아래 marketplace checkout HEAD와 같아야 한다
+git -C ~/.claude/plugins/marketplaces/aviron-skills rev-parse HEAD   # codex 러너면 ~/.codex/.tmp/marketplaces/aviron-skills
 $PY -V                                                         # Python 3.12.x
 $PY -c 'import tt_transformers, ttnn; print(tt_transformers.__file__, ttnn.__file__)'   # python_env site-packages, $CHECKOUT/ttnn/ttnn
 $PY $SK/scripts/reference_source.py                            # 오류 없이 pin commit
@@ -193,7 +194,7 @@ $CODEX_BIN login status                                        # codex 러너
   ```
 - 볼 값:
   - `runner=`, 러너별 줄(deepagents `model_api`·`deepagents_version`, codex `codex_home`·`codex_bin`·`codex_version`, claude `claude_bin`·`claude_version`·`claude_auth`)
-  - `plugin_mode=installed`, `plugin_root`가 러너의 설치본, `plugin_source_commit`이 origin `develop`, `reference_commit`이 pin, `reference_source_hash` 있음
+  - `plugin_mode=installed`, `plugin_root`가 러너의 설치본, `plugin_source_commit`이 origin `develop`(codex만; Claude Code 설치본은 빈칸), `reference_commit`이 pin, `reference_source_hash` 있음
   - `serving_after=benchmark-candidates`, `stop_after_stage=8`, `batch_scope_operator`, `device_stop_verifier=all`, `launch_note` 없음
   - `tooling_status`의 device_profiler·perf_report available, `stage_0_dry_run`~`stage_8_dry_run=true`
 - 시작은 `launch-unit.sh <unit> <work>/start.sh`다. unit 이름과 새 run 폴더를 작업 폴더 `unit.txt`·`run.txt`에 적는다. 시작 뒤 `systemctl --user is-active <unit>`과 manifest `graph_launch=fresh`·`stage_0_thread_id`를 본다.
